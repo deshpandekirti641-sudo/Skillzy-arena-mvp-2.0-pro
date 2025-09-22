@@ -1,0 +1,217 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { useGlobalSpacetimeCore } from '@/hooks/useGlobalSpacetimeCore'
+
+interface SecureDeveloperAuthProps {
+  onAuthenticated: (developerId: string) => void
+}
+
+export const SecureDeveloperAuth: React.FC<SecureDeveloperAuthProps> = ({ onAuthenticated }) => {
+  const [developerId, setDeveloperId] = useState<string>('')
+  const [authCode, setAuthCode] = useState<string>('')
+  const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false)
+  const [error, setError] = useState<string>('')
+  const [step, setStep] = useState<'id' | 'auth' | 'verified'>('id')
+  
+  const { spacetimeCore, connectionStatus } = useGlobalSpacetimeCore()
+
+  // Pre-authorized developer ID (this would be set during platform setup)
+  const AUTHORIZED_DEVELOPER_ID = 'dev_skillzy_owner_2024'
+
+  const handleDeveloperIdSubmit = (): void => {
+    if (!developerId.trim()) {
+      setError('Developer ID is required')
+      return
+    }
+    
+    if (developerId !== AUTHORIZED_DEVELOPER_ID) {
+      setError('Unauthorized Developer ID. Access denied.')
+      return
+    }
+    
+    setError('')
+    setStep('auth')
+  }
+
+  const handleAuthentication = async (): Promise<void> => {
+    if (!authCode.trim()) {
+      setError('Authentication code is required')
+      return
+    }
+
+    setIsAuthenticating(true)
+    setError('')
+
+    try {
+      // Master authentication codes (in production, this would be more secure)
+      const validCodes = [
+        'SKILLZY2024DEV',
+        'ARENA_OWNER_ACCESS',
+        'MASTER_DEV_KEY',
+        developerId.toUpperCase()
+      ]
+
+      if (validCodes.includes(authCode.toUpperCase())) {
+        // Additional security: Check network connection
+        if (connectionStatus === 'connected' && spacetimeCore) {
+          // Log developer access (this would be recorded in SpacetimeDB)
+          console.log(`🔐 Developer authenticated: ${developerId} at ${new Date().toISOString()}`)
+          
+          // Store secure session
+          const session = {
+            developerId,
+            authTime: Date.now(),
+            permissions: ['wallet_access', 'app_control', 'withdrawal', 'deposit', 'full_admin'],
+            verified: true
+          }
+          
+          localStorage.setItem('secure_dev_session', JSON.stringify(session))
+          setStep('verified')
+          
+          setTimeout(() => {
+            onAuthenticated(developerId)
+          }, 2000)
+        } else {
+          setError('Network connection required for developer authentication')
+        }
+      } else {
+        setError('Invalid authentication code. Access denied.')
+      }
+    } catch (err) {
+      setError('Authentication failed. Please try again.')
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent, action: () => void): void => {
+    if (e.key === 'Enter') {
+      action()
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-indigo-900 flex items-center justify-center px-4">
+      <Card className="w-full max-w-md bg-gray-900/90 border-purple-500/20 shadow-2xl">
+        <CardHeader className="text-center pb-2">
+          <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            🔐 SKILLZY ARENA
+          </CardTitle>
+          <p className="text-sm text-gray-400">Developer Authorization Required</p>
+        </CardHeader>
+        
+        <CardContent className="space-y-4">
+          {step === 'id' && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="developerId" className="text-sm font-medium text-gray-200">
+                  Developer ID
+                </Label>
+                <Input
+                  id="developerId"
+                  type="text"
+                  value={developerId}
+                  onChange={(e) => setDeveloperId(e.target.value)}
+                  onKeyPress={(e) => handleKeyPress(e, handleDeveloperIdSubmit)}
+                  className="bg-gray-800 border-gray-600 text-white placeholder-gray-400"
+                  placeholder="Enter your developer ID"
+                  disabled={isAuthenticating}
+                />
+              </div>
+
+              <Button
+                onClick={handleDeveloperIdSubmit}
+                disabled={isAuthenticating || !developerId.trim()}
+                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              >
+                Continue →
+              </Button>
+            </>
+          )}
+
+          {step === 'auth' && (
+            <>
+              <div className="text-center">
+                <Badge variant="outline" className="border-green-500 text-green-400 mb-4">
+                  ✓ Developer ID Verified: {developerId}
+                </Badge>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="authCode" className="text-sm font-medium text-gray-200">
+                  Master Authentication Code
+                </Label>
+                <Input
+                  id="authCode"
+                  type="password"
+                  value={authCode}
+                  onChange={(e) => setAuthCode(e.target.value)}
+                  onKeyPress={(e) => handleKeyPress(e, handleAuthentication)}
+                  className="bg-gray-800 border-gray-600 text-white placeholder-gray-400"
+                  placeholder="Enter master auth code"
+                  disabled={isAuthenticating}
+                />
+              </div>
+
+              <div className="text-xs text-gray-400 bg-gray-800/50 p-2 rounded">
+                🔑 Use one of your authorized codes:
+                <br />• Master developer key
+                <br />• Platform owner access code
+                <br />• Emergency access code
+              </div>
+
+              <Button
+                onClick={handleAuthentication}
+                disabled={isAuthenticating || !authCode.trim()}
+                className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
+              >
+                {isAuthenticating ? '🔐 Authenticating...' : '🔓 Authenticate'}
+              </Button>
+
+              <Button
+                onClick={() => setStep('id')}
+                variant="outline"
+                className="w-full border-gray-600 text-gray-300 hover:bg-gray-800"
+              >
+                ← Back
+              </Button>
+            </>
+          )}
+
+          {step === 'verified' && (
+            <div className="text-center space-y-4">
+              <div className="text-6xl">✅</div>
+              <div className="text-green-400 font-semibold">
+                Developer Authenticated Successfully!
+              </div>
+              <div className="text-sm text-gray-400">
+                Redirecting to Developer Dashboard...
+              </div>
+              <div className="flex justify-center">
+                <div className="w-8 h-8 border-4 border-green-400 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-900/20 border border-red-500/20 text-red-400 px-3 py-2 rounded text-sm">
+              ❌ {error}
+            </div>
+          )}
+
+          <div className="text-xs text-gray-500 text-center pt-4 border-t border-gray-800">
+            Connection: {connectionStatus === 'connected' ? '🟢 Secure' : '🔴 Offline'}
+            <br />
+            Only authorized developers can access this panel
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

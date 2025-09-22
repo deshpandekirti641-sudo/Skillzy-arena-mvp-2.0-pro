@@ -1,0 +1,443 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader } from './ui/card';
+import { Badge } from './ui/badge';
+import { Progress } from './ui/progress';
+import { 
+  Crown, Clock, Users, Trophy, ArrowLeft, 
+  Zap, Wifi, WifiOff, Target, Flag 
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+// Import professional games
+import ProfessionalChess from './games/ProfessionalChess';
+import ProfessionalSnakeLadder from './games/ProfessionalSnakeLadder';
+import ProfessionalCarrom from './games/ProfessionalCarrom';
+
+interface MatchSession {
+  matchId: string;
+  player1Identity: { toHexString: () => string };
+  player2Identity?: { toHexString: () => string } | null;
+  gameType: { tag: string };
+  betAmountCents: number;
+  status: { tag: string };
+  createdAt: { toDate: () => Date };
+  startedAt?: { toDate: () => Date } | null;
+  endedAt?: { toDate: () => Date } | null;
+  timeoutAt?: { toDate: () => Date } | null;
+}
+
+interface PlayerProfile {
+  identity: { toHexString: () => string };
+  username: string;
+  totalGamesPlayed: number;
+  totalWins: number;
+  totalEarningsCents: number;
+}
+
+interface MPLMatchArenaProps {
+  match: MatchSession;
+  playerProfile: PlayerProfile;
+  networkQuality: 'excellent' | 'good' | 'poor' | 'offline';
+  offlineMode: boolean;
+  onSubmitResult: (myScore: number, opponentScore: number) => void;
+  onBackToHub: () => void;
+}
+
+const MATCH_DURATION = 5 * 60; // 5 minutes in seconds
+
+// Generate realistic opponent names
+const OPPONENT_NAMES = [
+  'GameMaster', 'ProPlayer', 'SkillKing', 'ChampionX', 'Ace_Gamer',
+  'TopGun', 'WinnerPro', 'ElitePlayer', 'MasterChief', 'GameHero',
+  'SkillLord', 'ProChamp', 'GameGenius', 'WarriorPro', 'CrownPrince'
+];
+
+export function MPLMatchArena({ 
+  match, 
+  playerProfile, 
+  networkQuality,
+  offlineMode,
+  onSubmitResult, 
+  onBackToHub 
+}: MPLMatchArenaProps) {
+  const [timeLeft, setTimeLeft] = useState(MATCH_DURATION);
+  const [matchPhase, setMatchPhase] = useState<'waiting' | 'starting' | 'playing' | 'finished'>('waiting');
+  const [gameStartTime, setGameStartTime] = useState<Date | null>(null);
+  const [opponentFound, setOpponentFound] = useState(false);
+  const [myScore, setMyScore] = useState(0);
+  const [opponentScore, setOpponentScore] = useState(0);
+  const [gameSubmitted, setGameSubmitted] = useState(false);
+
+  const gameType = match.gameType.tag;
+  const betAmount = match.betAmountCents / 100;
+  const isPlayer1 = match.player1Identity.toHexString() === playerProfile.identity.toHexString();
+  const hasOpponent = match.player2Identity !== null;
+  
+  // Generate consistent opponent name based on match ID
+  const opponentName = OPPONENT_NAMES[
+    parseInt(match.matchId.slice(-2), 16) % OPPONENT_NAMES.length
+  ];
+
+  // Match timer
+  useEffect(() => {
+    if (matchPhase === 'playing' && timeLeft > 0) {
+      const timer = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            setMatchPhase('finished');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(timer);
+    }
+  }, [matchPhase, timeLeft]);
+
+  // Match progression
+  useEffect(() => {
+    if (matchPhase === 'waiting') {
+      // Simulate finding opponent
+      const findOpponentTimer = setTimeout(() => {
+        if (hasOpponent || offlineMode) {
+          setOpponentFound(true);
+          setMatchPhase('starting');
+          toast.success(`🎮 Opponent found: ${opponentName}!`);
+          
+          // Start game after brief delay
+          setTimeout(() => {
+            setMatchPhase('playing');
+            setGameStartTime(new Date());
+            toast.success('🔥 Game started! Good luck!');
+          }, 3000);
+        }
+      }, offlineMode ? 2000 : 5000);
+
+      return () => clearTimeout(findOpponentTimer);
+    }
+  }, [matchPhase, hasOpponent, offlineMode, opponentName]);
+
+  // Auto-generate opponent score
+  useEffect(() => {
+    if (matchPhase === 'playing' && myScore > 0) {
+      // Generate competitive but beatable opponent score
+      const baseOpponentScore = Math.max(0, myScore - 100 + Math.random() * 200);
+      const finalOpponentScore = Math.round(baseOpponentScore * (0.8 + Math.random() * 0.4));
+      setOpponentScore(Math.max(0, finalOpponentScore));
+    }
+  }, [myScore, matchPhase]);
+
+  const handleGameEnd = (finalScore: number) => {
+    setMyScore(finalScore);
+    setMatchPhase('finished');
+    
+    // Generate final opponent score
+    const competitiveOpponentScore = Math.max(0, finalScore - 50 + Math.random() * 100);
+    setOpponentScore(Math.round(competitiveOpponentScore));
+    
+    toast.success(`🎯 Final Score: ${finalScore} points!`);
+  };
+
+  const handleSubmitResult = () => {
+    if (gameSubmitted) return;
+    
+    setGameSubmitted(true);
+    
+    // Determine winner
+    const isWinner = myScore > opponentScore;
+    const winnings = isWinner ? Math.floor(betAmount * 2 * 0.8) : 0;
+    
+    if (isWinner) {
+      toast.success(`🎉 You won! Earned ₹${winnings}`);
+    } else if (myScore === opponentScore) {
+      toast.info(`🤝 It's a tie! Bet refunded`);
+    } else {
+      toast.error(`😔 You lost by ${opponentScore - myScore} points`);
+    }
+    
+    onSubmitResult(myScore, opponentScore);
+  };
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getGameIcon = () => {
+    switch (gameType) {
+      case 'Chess': return '♔';
+      case 'SnakeLadder': return '🐍';
+      case 'Carrom': return '🎯';
+      default: return '🎮';
+    }
+  };
+
+  // Waiting for opponent
+  if (matchPhase === 'waiting') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-900 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full bg-white/10 backdrop-blur border-white/20">
+          <CardHeader className="text-center">
+            <div className="w-16 h-16 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full mx-auto mb-4 flex items-center justify-center animate-bounce">
+              <span className="text-3xl">{getGameIcon()}</span>
+            </div>
+            <h2 className="text-2xl font-bold text-white">Finding Opponent...</h2>
+            <p className="text-purple-200">
+              {gameType.replace(/([A-Z])/g, ' $1').trim()} • ₹{betAmount}
+            </p>
+          </CardHeader>
+          
+          <CardContent className="space-y-6">
+            <div className="text-center">
+              <div className="animate-pulse mb-4">
+                <Users className="w-12 h-12 text-yellow-400 mx-auto mb-2" />
+                <p className="text-white text-lg">Searching for skilled players...</p>
+                <p className="text-white/60 text-sm">This may take up to 30 seconds</p>
+              </div>
+              
+              <div className="w-full bg-white/20 rounded-full h-2 mb-4">
+                <div className="bg-gradient-to-r from-yellow-400 to-orange-500 h-2 rounded-full animate-pulse" style={{width: '70%'}}></div>
+              </div>
+            </div>
+
+            {/* Network Status */}
+            <div className="flex items-center justify-center gap-2">
+              {networkQuality === 'offline' ? (
+                <WifiOff className="w-5 h-5 text-red-400" />
+              ) : (
+                <Wifi className={`w-5 h-5 ${
+                  networkQuality === 'excellent' ? 'text-green-400' :
+                  networkQuality === 'good' ? 'text-yellow-400' :
+                  'text-orange-400'
+                }`} />
+              )}
+              <span className="text-white/80 text-sm">
+                {offlineMode ? 'Demo Mode' : `Connection: ${networkQuality}`}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Button 
+                onClick={onBackToHub}
+                variant="outline" 
+                className="border-white/30 text-white hover:bg-white/10"
+              >
+                Cancel Match
+              </Button>
+              
+              <Button 
+                disabled
+                className="bg-gray-500/50 cursor-not-allowed"
+              >
+                Waiting...
+              </Button>
+            </div>
+
+            {offlineMode && (
+              <div className="bg-blue-500/20 p-3 rounded-lg text-center">
+                <p className="text-blue-200 text-sm">Demo Mode - Instant opponent matching</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Starting countdown
+  if (matchPhase === 'starting') {
+    const [countdown, setCountdown] = useState(3);
+    
+    useEffect(() => {
+      const timer = setInterval(() => {
+        setCountdown(prev => prev - 1);
+      }, 1000);
+
+      return () => clearInterval(timer);
+    }, []);
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-900 via-green-800 to-emerald-900 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full bg-white/10 backdrop-blur border-white/20">
+          <CardContent className="p-8 text-center space-y-6">
+            <div className="space-y-4">
+              <div className="w-20 h-20 bg-gradient-to-r from-green-400 to-blue-500 rounded-full mx-auto flex items-center justify-center">
+                <Trophy className="w-10 h-10 text-white" />
+              </div>
+              
+              <h2 className="text-2xl font-bold text-white">Match Found!</h2>
+              
+              <div className="grid grid-cols-2 gap-4 py-4">
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-green-500 rounded-full mx-auto mb-2 flex items-center justify-center">
+                    <span className="text-white font-bold">
+                      {playerProfile.username.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-white font-medium">{playerProfile.username}</p>
+                  <Badge className="bg-green-500">You</Badge>
+                </div>
+                
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-red-500 rounded-full mx-auto mb-2 flex items-center justify-center">
+                    <span className="text-white font-bold">
+                      {opponentName.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-white font-medium">{opponentName}</p>
+                  <Badge className="bg-red-500">Opponent</Badge>
+                </div>
+              </div>
+
+              <div className="bg-yellow-500/20 p-4 rounded-xl border border-yellow-500/30">
+                <p className="text-yellow-200 text-lg font-bold">₹{betAmount} Match</p>
+                <p className="text-yellow-300 text-sm">Winner takes ₹{Math.floor(betAmount * 2 * 0.8)}</p>
+              </div>
+            </div>
+
+            <div className="text-6xl font-bold text-white animate-pulse">
+              {countdown > 0 ? countdown : 'GO!'}
+            </div>
+
+            <p className="text-white/80">
+              {countdown > 0 ? 'Starting in...' : 'Game Started!'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Game finished
+  if (matchPhase === 'finished') {
+    const isWinner = myScore > opponentScore;
+    const isTie = myScore === opponentScore;
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-900 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full bg-white/10 backdrop-blur border-white/20">
+          <CardContent className="p-8 text-center space-y-6">
+            <div className="w-20 h-20 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full mx-auto flex items-center justify-center">
+              {isWinner ? (
+                <Trophy className="w-10 h-10 text-white animate-bounce" />
+              ) : isTie ? (
+                <Target className="w-10 h-10 text-white" />
+              ) : (
+                <Flag className="w-10 h-10 text-white" />
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-3xl font-bold text-white">
+                {isWinner ? '🎉 Victory!' : isTie ? '🤝 Tie Game!' : '😔 Game Over'}
+              </h2>
+              <p className="text-purple-200">
+                {isWinner 
+                  ? `You won ₹${Math.floor(betAmount * 2 * 0.8)}!` 
+                  : isTie 
+                    ? 'Bet refunded'
+                    : 'Better luck next time!'
+                }
+              </p>
+            </div>
+
+            {/* Final Scores */}
+            <div className="grid grid-cols-2 gap-4 py-4">
+              <div className="text-center">
+                <div className={`w-16 h-16 rounded-full mx-auto mb-2 flex items-center justify-center ${
+                  isWinner ? 'bg-green-500' : 'bg-gray-500'
+                }`}>
+                  <span className="text-white font-bold text-lg">
+                    {playerProfile.username.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <p className="text-white font-medium">{playerProfile.username}</p>
+                <p className="text-yellow-400 font-bold text-2xl">{myScore}</p>
+                {isWinner && <Badge className="bg-green-500">Winner!</Badge>}
+              </div>
+              
+              <div className="text-center">
+                <div className={`w-16 h-16 rounded-full mx-auto mb-2 flex items-center justify-center ${
+                  !isWinner && !isTie ? 'bg-green-500' : 'bg-gray-500'
+                }`}>
+                  <span className="text-white font-bold text-lg">
+                    {opponentName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <p className="text-white font-medium">{opponentName}</p>
+                <p className="text-blue-400 font-bold text-2xl">{opponentScore}</p>
+                {!isWinner && !isTie && <Badge className="bg-green-500">Winner!</Badge>}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {!gameSubmitted ? (
+                <Button 
+                  onClick={handleSubmitResult}
+                  className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white py-3 text-lg font-bold"
+                >
+                  <Trophy className="w-5 h-5 mr-2" />
+                  Submit Result & Claim Reward
+                </Button>
+              ) : (
+                <div className="text-center">
+                  <Badge className="bg-green-500 text-white text-lg px-4 py-2">
+                    ✅ Result Submitted!
+                  </Badge>
+                </div>
+              )}
+              
+              <Button 
+                onClick={onBackToHub}
+                variant="outline"
+                className="w-full border-white/30 text-white hover:bg-white/10"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Games
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Game is playing - render the appropriate game
+  const gameProps = {
+    matchId: match.matchId,
+    playerName: playerProfile.username,
+    opponentName: opponentName,
+    timeLeft,
+    betAmount,
+    onGameEnd: handleGameEnd,
+    onQuitGame: onBackToHub
+  };
+
+  switch (gameType) {
+    case 'Chess':
+      return <ProfessionalChess {...gameProps} />;
+    case 'SnakeLadder':
+      return <ProfessionalSnakeLadder {...gameProps} />;
+    case 'Carrom':
+      return <ProfessionalCarrom {...gameProps} />;
+    default:
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-red-900 to-red-700 flex items-center justify-center p-4">
+          <Card className="max-w-md w-full bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="p-8 text-center">
+              <h2 className="text-2xl font-bold text-white mb-4">Game Not Available</h2>
+              <p className="text-red-200 mb-6">The requested game type is not supported.</p>
+              <Button onClick={onBackToHub} className="w-full">
+                Back to Games
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+  }
+}

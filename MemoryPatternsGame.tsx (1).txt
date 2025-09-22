@@ -1,0 +1,336 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Brain, Circle, ArrowLeft } from 'lucide-react';
+import type { GameType } from '../../spacetime_module_bindings';
+
+interface MemoryPatternsGameProps {
+  onGameEnd: (score: bigint, durationMs: number) => void;
+  onBackToHub: () => void;
+}
+
+type GameState = 'waiting' | 'showing' | 'input' | 'correct' | 'wrong' | 'ended';
+
+const COLORS = [
+  { name: 'red', class: 'bg-red-500', active: 'bg-red-600' },
+  { name: 'blue', class: 'bg-blue-500', active: 'bg-blue-600' },
+  { name: 'green', class: 'bg-green-500', active: 'bg-green-600' },
+  { name: 'yellow', class: 'bg-yellow-500', active: 'bg-yellow-600' },
+  { name: 'purple', class: 'bg-purple-500', active: 'bg-purple-600' },
+  { name: 'orange', class: 'bg-orange-500', active: 'bg-orange-600' },
+];
+
+export function MemoryPatternsGame({ onGameEnd, onBackToHub }: MemoryPatternsGameProps) {
+  const [gameState, setGameState] = useState<GameState>('waiting');
+  const [score, setScore] = useState(0);
+  const [level, setLevel] = useState(1);
+  const [sequence, setSequence] = useState<number[]>([]);
+  const [userInput, setUserInput] = useState<number[]>([]);
+  const [showingIndex, setShowingIndex] = useState(0);
+  const [activeColor, setActiveColor] = useState<number | null>(null);
+  const [gameStartTime, setGameStartTime] = useState(0);
+  const [lives, setLives] = useState(3);
+  
+  const timeoutRef = useRef<NodeJS.Timeout>();
+  
+  const generateSequence = useCallback((length: number) => {
+    return Array.from({ length }, () => Math.floor(Math.random() * COLORS.length));
+  }, []);
+
+  const showSequence = useCallback(() => {
+    setGameState('showing');
+    setShowingIndex(0);
+    setActiveColor(null);
+    
+    let currentIndex = 0;
+    
+    const showNext = () => {
+      if (currentIndex < sequence.length) {
+        setActiveColor(sequence[currentIndex]);
+        setShowingIndex(currentIndex);
+        
+        timeoutRef.current = setTimeout(() => {
+          setActiveColor(null);
+          timeoutRef.current = setTimeout(() => {
+            currentIndex++;
+            showNext();
+          }, 200);
+        }, 600);
+      } else {
+        setGameState('input');
+        setUserInput([]);
+      }
+    };
+    
+    // Brief delay before starting sequence
+    timeoutRef.current = setTimeout(showNext, 1000);
+  }, [sequence]);
+
+  const startLevel = useCallback(() => {
+    const newSequence = generateSequence(level + 2); // Start with 3, then 4, 5, etc.
+    setSequence(newSequence);
+    setUserInput([]);
+    setTimeout(showSequence, 1000);
+  }, [level, generateSequence, showSequence]);
+
+  const handleColorClick = useCallback((colorIndex: number) => {
+    if (gameState !== 'input') return;
+    
+    const newUserInput = [...userInput, colorIndex];
+    setUserInput(newUserInput);
+    
+    // Check if this input is correct so far
+    if (sequence[newUserInput.length - 1] !== colorIndex) {
+      // Wrong input
+      setGameState('wrong');
+      setLives(prev => {
+        const newLives = prev - 1;
+        if (newLives <= 0) {
+          setTimeout(() => endGame(), 1500);
+        } else {
+          setTimeout(() => {
+            setGameState('waiting');
+            startLevel(); // Retry same level
+          }, 1500);
+        }
+        return newLives;
+      });
+      return;
+    }
+    
+    // Check if sequence is complete
+    if (newUserInput.length === sequence.length) {
+      // Level complete!
+      setGameState('correct');
+      const levelScore = level * 100 + (sequence.length * 50);
+      setScore(prev => prev + levelScore);
+      
+      setTimeout(() => {
+        setLevel(prev => prev + 1);
+        setGameState('waiting');
+        startLevel();
+      }, 1500);
+    }
+  }, [gameState, userInput, sequence, level, startLevel]);
+
+  const endGame = useCallback(() => {
+    setGameState('ended');
+    const gameDuration = Date.now() - gameStartTime;
+    const gameType: GameType = { tag: 'MemoryPatterns' };
+    onGameEnd(BigInt(score), gameDuration);
+  }, [score, gameStartTime, onGameEnd]);
+
+  const startGame = () => {
+    setGameState('waiting');
+    setScore(0);
+    setLevel(1);
+    setLives(3);
+    setSequence([]);
+    setUserInput([]);
+    setGameStartTime(Date.now());
+    startLevel();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  if (gameState === 'waiting' && level === 1 && sequence.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 p-4 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full w-16 h-16 flex items-center justify-center">
+              <Brain className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Memory Patterns</CardTitle>
+            <CardDescription>
+              Watch the color sequence and repeat it back. Each level gets longer!
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-800 mb-2">How to Play:</h4>
+              <ul className="text-sm text-blue-700 space-y-1">
+                <li>• Watch the sequence of colors light up</li>
+                <li>• Click the colors in the same order</li>
+                <li>• Each level adds more colors</li>
+                <li>• You have 3 lives - don't make mistakes!</li>
+              </ul>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={onBackToHub} variant="outline" className="flex-1">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Hub
+              </Button>
+              <Button onClick={startGame} className="flex-1 bg-gradient-to-r from-blue-500 to-purple-500">
+                Start Game
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (gameState === 'ended') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 p-4 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 p-3 bg-gradient-to-r from-green-500 to-blue-500 rounded-full w-16 h-16 flex items-center justify-center">
+              <Brain className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Game Over!</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="text-center">
+              <div className="text-4xl font-bold text-green-600 mb-2">
+                {score.toLocaleString()}
+              </div>
+              <div className="text-gray-600">Total Points Earned</div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <div className="text-xl font-bold text-purple-600">
+                  {level - 1}
+                </div>
+                <div className="text-sm text-purple-700">Levels Completed</div>
+              </div>
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-xl font-bold text-blue-600">
+                  {level + 1}
+                </div>
+                <div className="text-sm text-blue-700">Max Sequence</div>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button onClick={onBackToHub} variant="outline" className="flex-1">
+                Back to Hub
+              </Button>
+              <Button onClick={startGame} className="flex-1 bg-gradient-to-r from-blue-500 to-purple-500">
+                Play Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Game Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <Button onClick={onBackToHub} variant="outline" size="sm">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div className="text-white">
+              <h2 className="text-xl font-bold">Memory Patterns</h2>
+              <p className="text-blue-200">Level {level} • Sequence Length: {sequence.length}</p>
+            </div>
+          </div>
+          <div className="text-right text-white">
+            <div className="text-2xl font-bold">{score.toLocaleString()}</div>
+            <div className="text-blue-200">Points</div>
+          </div>
+        </div>
+
+        {/* Lives Indicator */}
+        <div className="flex justify-center gap-2 mb-4">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div
+              key={i}
+              className={`w-3 h-3 rounded-full ${
+                i < lives ? 'bg-red-500' : 'bg-gray-600'
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Game Status */}
+        <Card className="mb-6">
+          <CardContent className="py-4">
+            <div className="text-center">
+              {gameState === 'waiting' && (
+                <div className="text-lg font-medium">Get ready for level {level}...</div>
+              )}
+              {gameState === 'showing' && (
+                <div className="text-lg font-medium">
+                  Watch the sequence... ({showingIndex + 1} of {sequence.length})
+                </div>
+              )}
+              {gameState === 'input' && (
+                <div className="text-lg font-medium">
+                  Repeat the sequence! ({userInput.length} of {sequence.length})
+                </div>
+              )}
+              {gameState === 'correct' && (
+                <div className="text-lg font-medium text-green-600">
+                  Correct! Moving to next level...
+                </div>
+              )}
+              {gameState === 'wrong' && (
+                <div className="text-lg font-medium text-red-600">
+                  Wrong sequence! {lives > 1 ? 'Try again...' : 'Game Over!'}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Color Grid */}
+        <Card className="mb-6">
+          <CardContent className="p-8">
+            <div className="grid grid-cols-3 gap-4 max-w-md mx-auto">
+              {COLORS.map((color, index) => (
+                <button
+                  key={color.name}
+                  onClick={() => handleColorClick(index)}
+                  disabled={gameState !== 'input'}
+                  className={`
+                    w-20 h-20 rounded-full border-4 border-white shadow-lg transform transition-all duration-200
+                    ${activeColor === index ? color.active : color.class}
+                    ${gameState === 'input' ? 'hover:scale-110 cursor-pointer' : 'cursor-not-allowed'}
+                    ${activeColor === index ? 'scale-110 ring-4 ring-white' : ''}
+                  `}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Progress Indicators */}
+        <div className="grid grid-cols-2 gap-4">
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600">{sequence.length}</div>
+                <div className="text-sm text-gray-600">Sequence Length</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{userInput.length}</div>
+                <div className="text-sm text-gray-600">Your Progress</div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}

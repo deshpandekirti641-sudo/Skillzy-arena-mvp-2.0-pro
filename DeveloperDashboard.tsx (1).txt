@@ -1,0 +1,203 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Progress } from '@/components/ui/progress'
+import { toast } from 'sonner'
+import { useDeveloperAuth } from '@/hooks/useDeveloperAuth'
+import { DeveloperWallet } from '@/components/DeveloperWallet'
+import { GameControlPanel } from '@/components/GameControlPanel'
+import { ServerMonitoring } from '@/components/ServerMonitoring'
+import { PlayerAnalytics } from '@/components/PlayerAnalytics'
+
+export const DeveloperDashboard: React.FC = () => {
+  const { logout, developerInfo, updateActivity } = useDeveloperAuth()
+  const [stats, setStats] = useState({
+    totalPlayers: 0,
+    activeMatches: 0,
+    totalRevenue: 0,
+    todayRevenue: 0,
+    serverUptime: '99.9%',
+    avgResponseTime: '45ms'
+  })
+
+  // Update activity every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      updateActivity()
+    }, 5 * 60 * 1000)
+
+    return () => clearInterval(interval)
+  }, [updateActivity])
+
+  // Simulate real-time stats updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStats(prev => ({
+        ...prev,
+        totalPlayers: prev.totalPlayers + Math.floor(Math.random() * 3),
+        activeMatches: Math.floor(Math.random() * 20) + 5,
+        totalRevenue: prev.totalRevenue + (Math.random() * 50),
+        todayRevenue: prev.todayRevenue + (Math.random() * 10)
+      }))
+    }, 10000)
+
+    // Initialize with some demo data
+    setStats({
+      totalPlayers: 1247,
+      activeMatches: 12,
+      totalRevenue: 45678.50,
+      todayRevenue: 892.30,
+      serverUptime: '99.9%',
+      avgResponseTime: '45ms'
+    })
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleLogout = (): void => {
+    toast.success('🚪 Logged out successfully!')
+    logout()
+  }
+
+  const sessionDuration = developerInfo ? Math.floor((Date.now() - developerInfo.loginTime) / (1000 * 60)) : 0
+
+  return (
+    <div className="min-h-screen p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-4xl font-bold text-white mb-2">
+            🎮 Skillzy Arena Developer Dashboard
+          </h1>
+          <p className="text-gray-300">
+            Welcome back! Session: {sessionDuration} minutes
+          </p>
+        </div>
+        <div className="flex items-center gap-4">
+          <Badge variant="outline" className="border-green-500/50 text-green-300">
+            🟢 Online
+          </Badge>
+          <Button 
+            variant="outline" 
+            onClick={handleLogout}
+            className="border-red-500/50 text-red-300 hover:bg-red-500/20"
+          >
+            🚪 Logout
+          </Button>
+        </div>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <Card className="bg-gradient-to-br from-blue-900/50 to-purple-900/50 border-blue-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-blue-300 text-sm">👥 Total Players</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">{stats.totalPlayers.toLocaleString()}</div>
+            <p className="text-xs text-gray-400">Registered users</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-900/50 to-blue-900/50 border-green-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-green-300 text-sm">🎮 Active Matches</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">{stats.activeMatches}</div>
+            <p className="text-xs text-gray-400">Currently playing</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-yellow-900/50 to-orange-900/50 border-yellow-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-yellow-300 text-sm">💰 Total Revenue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">₹{stats.totalRevenue.toFixed(2)}</div>
+            <p className="text-xs text-gray-400">All-time earnings</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-purple-900/50 to-pink-900/50 border-purple-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-purple-300 text-sm">📈 Today's Revenue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">₹{stats.todayRevenue.toFixed(2)}</div>
+            <p className="text-xs text-gray-400">40% platform fee</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Dashboard */}
+      <Tabs defaultValue="wallet" className="w-full">
+        <TabsList className="grid w-full grid-cols-4 bg-black/20 border-white/10">
+          <TabsTrigger value="wallet" className="text-white data-[state=active]:bg-blue-600">
+            💰 Developer Wallet
+          </TabsTrigger>
+          <TabsTrigger value="controls" className="text-white data-[state=active]:bg-purple-600">
+            🎮 Game Controls
+          </TabsTrigger>
+          <TabsTrigger value="servers" className="text-white data-[state=active]:bg-green-600">
+            🖥️ Server Monitoring
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="text-white data-[state=active]:bg-orange-600">
+            📊 Player Analytics
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="wallet" className="mt-6">
+          <DeveloperWallet />
+        </TabsContent>
+
+        <TabsContent value="controls" className="mt-6">
+          <GameControlPanel />
+        </TabsContent>
+
+        <TabsContent value="servers" className="mt-6">
+          <ServerMonitoring />
+        </TabsContent>
+
+        <TabsContent value="analytics" className="mt-6">
+          <PlayerAnalytics />
+        </TabsContent>
+      </Tabs>
+
+      {/* System Status */}
+      <Card className="mt-8 bg-black/20 border-white/10">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            🔧 System Status
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-gray-300">Server Uptime</span>
+                <Badge variant="outline" className="border-green-500/50 text-green-300">
+                  {stats.serverUptime}
+                </Badge>
+              </div>
+              <Progress value={99.9} className="h-2" />
+            </div>
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-gray-300">Average Response Time</span>
+                <Badge variant="outline" className="border-blue-500/50 text-blue-300">
+                  {stats.avgResponseTime}
+                </Badge>
+              </div>
+              <Progress value={85} className="h-2" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

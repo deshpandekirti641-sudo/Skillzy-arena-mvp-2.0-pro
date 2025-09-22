@@ -1,0 +1,600 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useMultiCurrency } from '../hooks/useMultiCurrency';
+import { useLanguage } from '../hooks/useLanguageSystem';
+
+interface PaymentMethod {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  processingTime: string;
+  fees: string;
+  minAmount: number;
+  maxAmount: number;
+}
+
+interface InternationalPaymentSystemProps {
+  isDeposit: boolean;
+  onComplete: (transaction: any) => void;
+  onCancel: () => void;
+}
+
+const InternationalPaymentSystem: React.FC<InternationalPaymentSystemProps> = ({
+  isDeposit,
+  onComplete,
+  onCancel
+}) => {
+  const { 
+    currentCurrency, 
+    formatAmount, 
+    convertToCurrentCurrency,
+    convertToINR,
+    getCurrentCurrencyInfo,
+    getDepositMethods,
+    getWithdrawalMethods
+  } = useMultiCurrency();
+  
+  const { t } = useLanguage();
+  const [selectedMethod, setSelectedMethod] = useState<string>('');
+  const [amount, setAmount] = useState<string>('');
+  const [step, setStep] = useState<'select-method' | 'enter-details' | 'confirm' | 'processing'>('select-method');
+  const [paymentDetails, setPaymentDetails] = useState<Record<string, string>>({});
+
+  const currencyInfo = getCurrentCurrencyInfo();
+  const availableMethods = isDeposit ? getDepositMethods() : getWithdrawalMethods();
+
+  // Payment method configurations by currency
+  const getPaymentMethodsConfig = (): PaymentMethod[] => {
+    const baseAmount = isDeposit ? 50 : 100; // Base amounts in INR
+    const minAmount = convertToCurrentCurrency(baseAmount);
+    const maxAmount = convertToCurrentCurrency(isDeposit ? 50000 : 100000);
+
+    switch (currentCurrency) {
+      case 'USD':
+        return [
+          {
+            id: 'card',
+            name: 'Credit/Debit Card',
+            icon: '💳',
+            description: 'Visa, Mastercard, American Express',
+            processingTime: 'Instant',
+            fees: '2.9% + $0.30',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'paypal',
+            name: 'PayPal',
+            icon: '🅿️',
+            description: 'Secure PayPal payments',
+            processingTime: 'Instant',
+            fees: '3.49% + $0.49',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'ach',
+            name: 'ACH Bank Transfer',
+            icon: '🏦',
+            description: 'Direct bank account transfer',
+            processingTime: '3-5 business days',
+            fees: '$1.00',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'applepay',
+            name: 'Apple Pay',
+            icon: '🍎',
+            description: 'Fast and secure Apple Pay',
+            processingTime: 'Instant',
+            fees: '2.9% + $0.30',
+            minAmount,
+            maxAmount
+          }
+        ];
+
+      case 'GBP':
+        return [
+          {
+            id: 'card',
+            name: 'Credit/Debit Card',
+            icon: '💳',
+            description: 'UK cards accepted',
+            processingTime: 'Instant',
+            fees: '2.4% + £0.20',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'bank',
+            name: 'Bank Transfer',
+            icon: '🏦',
+            description: 'UK bank transfer',
+            processingTime: '2-3 hours',
+            fees: '£0.50',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'fasterpayments',
+            name: 'Faster Payments',
+            icon: '⚡',
+            description: 'Instant UK bank transfer',
+            processingTime: 'Instant',
+            fees: '£0.20',
+            minAmount,
+            maxAmount
+          }
+        ];
+
+      case 'EUR':
+        return [
+          {
+            id: 'card',
+            name: 'Credit/Debit Card',
+            icon: '💳',
+            description: 'European cards accepted',
+            processingTime: 'Instant',
+            fees: '2.4% + €0.25',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'sepa',
+            name: 'SEPA Transfer',
+            icon: '🇪🇺',
+            description: 'European bank transfer',
+            processingTime: '1-2 business days',
+            fees: '€0.50',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'ideal',
+            name: 'iDEAL',
+            icon: '🟦',
+            description: 'Netherlands bank payment',
+            processingTime: 'Instant',
+            fees: '€0.35',
+            minAmount,
+            maxAmount
+          }
+        ];
+
+      case 'CNY':
+        return [
+          {
+            id: 'alipay',
+            name: 'Alipay',
+            icon: '🅰️',
+            description: 'Secure Alipay payments',
+            processingTime: 'Instant',
+            fees: '1.2%',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'wechat',
+            name: 'WeChat Pay',
+            icon: '💬',
+            description: 'WeChat Pay wallet',
+            processingTime: 'Instant',
+            fees: '1.2%',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'unionpay',
+            name: 'China UnionPay',
+            icon: '🏧',
+            description: 'Chinese bank cards',
+            processingTime: '2-3 minutes',
+            fees: '2.8%',
+            minAmount,
+            maxAmount
+          }
+        ];
+
+      case 'JPY':
+        return [
+          {
+            id: 'card',
+            name: 'Credit/Debit Card',
+            icon: '💳',
+            description: 'Japanese cards accepted',
+            processingTime: 'Instant',
+            fees: '3.6%',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'bank',
+            name: 'Bank Transfer',
+            icon: '🏦',
+            description: 'Japanese bank transfer',
+            processingTime: '1-2 business days',
+            fees: '¥200',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'convenience',
+            name: 'Convenience Store',
+            icon: '🏪',
+            description: 'Pay at convenience stores',
+            processingTime: '2-3 hours',
+            fees: '¥300',
+            minAmount,
+            maxAmount
+          }
+        ];
+
+      case 'BRL':
+        return [
+          {
+            id: 'pix',
+            name: 'PIX',
+            icon: '🔥',
+            description: 'Instant Brazilian payments',
+            processingTime: 'Instant',
+            fees: 'R$0.50',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'card',
+            name: 'Credit/Debit Card',
+            icon: '💳',
+            description: 'Brazilian cards accepted',
+            processingTime: 'Instant',
+            fees: '4.99%',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'ted',
+            name: 'TED Transfer',
+            icon: '🏦',
+            description: 'Brazilian bank transfer',
+            processingTime: '30 minutes',
+            fees: 'R$10.00',
+            minAmount,
+            maxAmount
+          }
+        ];
+
+      case 'INR':
+      default:
+        return [
+          {
+            id: 'upi',
+            name: 'UPI',
+            icon: '📱',
+            description: 'PhonePe, GPay, Paytm, BHIM',
+            processingTime: 'Instant',
+            fees: 'Free',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'netbanking',
+            name: 'Net Banking',
+            icon: '🏦',
+            description: 'All Indian banks supported',
+            processingTime: '2-5 minutes',
+            fees: '₹5',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'card',
+            name: 'Credit/Debit Card',
+            icon: '💳',
+            description: 'Visa, Mastercard, RuPay',
+            processingTime: 'Instant',
+            fees: '2% + ₹3',
+            minAmount,
+            maxAmount
+          },
+          {
+            id: 'wallet',
+            name: 'Wallet',
+            icon: '👛',
+            description: 'Paytm, PhonePe, Amazon Pay',
+            processingTime: 'Instant',
+            fees: '1.5%',
+            minAmount,
+            maxAmount
+          }
+        ];
+    }
+  };
+
+  const paymentMethods = getPaymentMethodsConfig();
+  const selectedMethodConfig = paymentMethods.find(method => method.id === selectedMethod);
+
+  const handleMethodSelect = (methodId: string): void => {
+    setSelectedMethod(methodId);
+    setStep('enter-details');
+  };
+
+  const handleAmountChange = (value: string): void => {
+    // Only allow numbers and decimal point
+    const cleanValue = value.replace(/[^0-9.]/g, '');
+    setAmount(cleanValue);
+  };
+
+  const getPaymentDetailsForm = (): React.ReactNode => {
+    if (!selectedMethodConfig) return null;
+
+    switch (selectedMethod) {
+      case 'card':
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Card Number</label>
+              <input
+                type="text"
+                placeholder="1234 5678 9012 3456"
+                className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                onChange={(e) => setPaymentDetails({...paymentDetails, cardNumber: e.target.value})}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Expiry</label>
+                <input
+                  type="text"
+                  placeholder="MM/YY"
+                  className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                  onChange={(e) => setPaymentDetails({...paymentDetails, expiry: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">CVV</label>
+                <input
+                  type="text"
+                  placeholder="123"
+                  className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                  onChange={(e) => setPaymentDetails({...paymentDetails, cvv: e.target.value})}
+                />
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'upi':
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">UPI ID</label>
+              <input
+                type="text"
+                placeholder="yourname@paytm"
+                className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                onChange={(e) => setPaymentDetails({...paymentDetails, upiId: e.target.value})}
+              />
+            </div>
+          </div>
+        );
+
+      case 'bank':
+      case 'netbanking':
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Bank Account</label>
+              <input
+                type="text"
+                placeholder="Account Number"
+                className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                onChange={(e) => setPaymentDetails({...paymentDetails, account: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Routing/IFSC Code</label>
+              <input
+                type="text"
+                placeholder="IFSC or Routing Number"
+                className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                onChange={(e) => setPaymentDetails({...paymentDetails, routing: e.target.value})}
+              />
+            </div>
+          </div>
+        );
+
+      default:
+        return (
+          <div className="text-center py-8">
+            <p className="text-gray-400">Payment method configuration ready</p>
+            <p className="text-sm text-gray-500 mt-2">Click continue to proceed</p>
+          </div>
+        );
+    }
+  };
+
+  const handleContinue = (): void => {
+    if (step === 'enter-details' && amount && selectedMethod) {
+      setStep('confirm');
+    }
+  };
+
+  const handleConfirm = async (): Promise<void> => {
+    setStep('processing');
+    
+    // Simulate payment processing
+    setTimeout(() => {
+      const transaction = {
+        id: `txn_${Date.now()}`,
+        type: isDeposit ? 'deposit' : 'withdrawal',
+        amount: parseFloat(amount),
+        currency: currentCurrency,
+        method: selectedMethod,
+        status: 'completed',
+        timestamp: new Date().toISOString()
+      };
+      
+      onComplete(transaction);
+    }, 3000);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900/95 backdrop-blur rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto border border-gray-700">
+        {/* Header */}
+        <div className="p-6 border-b border-gray-700">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-white">
+              {isDeposit ? t('deposit') : t('withdraw')} Money
+            </h2>
+            <button
+              onClick={onCancel}
+              className="text-gray-400 hover:text-white"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          {/* Currency Info */}
+          <div className="mt-4 p-3 bg-blue-500/20 rounded-lg">
+            <div className="flex items-center gap-2 text-blue-300">
+              <span className="text-lg">{currencyInfo.flag}</span>
+              <span className="font-medium">{currencyInfo.name}</span>
+              <span className="text-blue-400">({currencyInfo.symbol})</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {step === 'select-method' && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-white mb-4">
+                {t('selectPayment')}
+              </h3>
+              
+              {paymentMethods.map((method) => (
+                <button
+                  key={method.id}
+                  onClick={() => handleMethodSelect(method.id)}
+                  className="w-full p-4 rounded-xl bg-gray-800/50 hover:bg-gray-800/80 border border-gray-600 hover:border-blue-500 transition-all text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{method.icon}</span>
+                    <div className="flex-1">
+                      <div className="font-medium text-white">{method.name}</div>
+                      <div className="text-sm text-gray-400">{method.description}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {method.processingTime} • {method.fees}
+                      </div>
+                    </div>
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 'enter-details' && selectedMethodConfig && (
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-2xl">{selectedMethodConfig.icon}</span>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">{selectedMethodConfig.name}</h3>
+                  <p className="text-sm text-gray-400">{selectedMethodConfig.description}</p>
+                </div>
+              </div>
+
+              {/* Amount Input */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Amount ({currencyInfo.symbol})
+                </label>
+                <input
+                  type="text"
+                  value={amount}
+                  onChange={(e) => handleAmountChange(e.target.value)}
+                  placeholder={`Min: ${formatAmount(selectedMethodConfig.minAmount)}`}
+                  className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white text-lg"
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  Range: {formatAmount(selectedMethodConfig.minAmount)} - {formatAmount(selectedMethodConfig.maxAmount)}
+                </div>
+              </div>
+
+              {/* Payment Details Form */}
+              {getPaymentDetailsForm()}
+
+              <button
+                onClick={handleContinue}
+                disabled={!amount || parseFloat(amount) < selectedMethodConfig.minAmount}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-3 rounded-lg text-white font-medium transition-colors"
+              >
+                {t('confirm')}
+              </button>
+            </div>
+          )}
+
+          {step === 'confirm' && selectedMethodConfig && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-semibold text-white">Confirm Transaction</h3>
+              
+              <div className="bg-gray-800/50 rounded-lg p-4 space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Method:</span>
+                  <span className="text-white">{selectedMethodConfig.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Amount:</span>
+                  <span className="text-white text-lg font-medium">
+                    {formatAmount(parseFloat(amount || '0'))}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Fees:</span>
+                  <span className="text-white">{selectedMethodConfig.fees}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Processing Time:</span>
+                  <span className="text-white">{selectedMethodConfig.processingTime}</span>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep('enter-details')}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg text-white font-medium transition-colors"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  className="flex-1 bg-green-600 hover:bg-green-700 px-6 py-3 rounded-lg text-white font-medium transition-colors"
+                >
+                  {t('confirm')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 'processing' && (
+            <div className="text-center py-8">
+              <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+              <h3 className="text-lg font-semibold text-white mb-2">Processing Payment...</h3>
+              <p className="text-gray-400">Please wait while we process your transaction</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default InternationalPaymentSystem;

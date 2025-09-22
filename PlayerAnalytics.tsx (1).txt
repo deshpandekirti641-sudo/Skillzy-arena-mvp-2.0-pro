@@ -1,0 +1,415 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+
+interface PlayerStats {
+  totalPlayers: number
+  activeToday: number
+  newRegistrations: number
+  retentionRate: number
+  averageSessionTime: number
+  topSpenders: Array<{
+    id: string
+    username: string
+    totalSpent: number
+    winRate: number
+  }>
+}
+
+interface GameAnalytics {
+  gameType: string
+  totalMatches: number
+  averageMatchDuration: number
+  popularityScore: number
+  revenue: number
+  winRates: {
+    high: number
+    medium: number
+    low: number
+  }
+}
+
+interface RevenueData {
+  daily: number
+  weekly: number
+  monthly: number
+  total: number
+  breakdown: {
+    templateRun: number
+    trafficRace: number
+  }
+}
+
+export const PlayerAnalytics: React.FC = () => {
+  const [playerStats, setPlayerStats] = useState<PlayerStats>({
+    totalPlayers: 0,
+    activeToday: 0,
+    newRegistrations: 0,
+    retentionRate: 0,
+    averageSessionTime: 0,
+    topSpenders: []
+  })
+
+  const [gameAnalytics, setGameAnalytics] = useState<GameAnalytics[]>([])
+  const [revenueData, setRevenueData] = useState<RevenueData>({
+    daily: 0,
+    weekly: 0,
+    monthly: 0,
+    total: 0,
+    breakdown: {
+      templateRun: 0,
+      trafficRace: 0
+    }
+  })
+
+  const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d' | 'all'>('24h')
+  const [isLoading, setIsLoading] = useState(false)
+
+  // Initialize with demo data
+  useEffect(() => {
+    setPlayerStats({
+      totalPlayers: 12847,
+      activeToday: 1456,
+      newRegistrations: 234,
+      retentionRate: 68.5,
+      averageSessionTime: 18.7,
+      topSpenders: [
+        { id: '1', username: 'GameMaster123', totalSpent: 2450, winRate: 72.5 },
+        { id: '2', username: 'RaceKing456', totalSpent: 1890, winRate: 68.3 },
+        { id: '3', username: 'TempleRunner', totalSpent: 1650, winRate: 64.7 },
+        { id: '4', username: 'SpeedDemon', totalSpent: 1420, winRate: 71.2 },
+        { id: '5', username: 'ProGamer999', totalSpent: 1280, winRate: 69.8 }
+      ]
+    })
+
+    setGameAnalytics([
+      {
+        gameType: 'Temple Run 3D',
+        totalMatches: 8429,
+        averageMatchDuration: 58.4,
+        popularityScore: 87,
+        revenue: 67432,
+        winRates: { high: 45.2, medium: 38.7, low: 16.1 }
+      },
+      {
+        gameType: 'Traffic Race 3D',
+        totalMatches: 6754,
+        averageMatchDuration: 59.1,
+        popularityScore: 82,
+        revenue: 54032,
+        winRates: { high: 42.8, medium: 41.3, low: 15.9 }
+      }
+    ])
+
+    setRevenueData({
+      daily: 892.50,
+      weekly: 6247.80,
+      monthly: 24356.70,
+      total: 121464,
+      breakdown: {
+        templateRun: 67432,
+        trafficRace: 54032
+      }
+    })
+  }, [])
+
+  // Simulate real-time updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPlayerStats(prev => ({
+        ...prev,
+        activeToday: prev.activeToday + Math.floor(Math.random() * 5),
+        newRegistrations: prev.newRegistrations + Math.floor(Math.random() * 2),
+        averageSessionTime: Math.max(10, prev.averageSessionTime + (Math.random() - 0.5) * 2)
+      }))
+
+      setRevenueData(prev => ({
+        ...prev,
+        daily: prev.daily + (Math.random() * 50),
+        total: prev.total + (Math.random() * 50)
+      }))
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleRefresh = async (): Promise<void> => {
+    setIsLoading(true)
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    setIsLoading(false)
+  }
+
+  const getPopularityColor = (score: number): string => {
+    if (score >= 80) return 'bg-green-500'
+    if (score >= 60) return 'bg-yellow-500'
+    return 'bg-red-500'
+  }
+
+  const formatCurrency = (amount: number): string => {
+    return `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Controls */}
+      <Card className="bg-black/20 border-white/10">
+        <CardContent className="pt-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <Select value={timeRange} onValueChange={(value: '24h' | '7d' | '30d' | 'all') => setTimeRange(value)}>
+                <SelectTrigger className="w-32 bg-white/10 border-white/20 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="24h">Last 24h</SelectItem>
+                  <SelectItem value="7d">Last 7 days</SelectItem>
+                  <SelectItem value="30d">Last 30 days</SelectItem>
+                  <SelectItem value="all">All time</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button 
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            >
+              {isLoading ? '🔄 Refreshing...' : '🔄 Refresh Data'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Player Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Card className="bg-gradient-to-br from-blue-900/50 to-purple-900/50 border-blue-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-blue-300 text-sm">👥 Total Players</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">{playerStats.totalPlayers.toLocaleString()}</div>
+            <p className="text-xs text-gray-400">Registered users</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-900/50 to-blue-900/50 border-green-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-green-300 text-sm">🔥 Active Today</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">{playerStats.activeToday.toLocaleString()}</div>
+            <p className="text-xs text-gray-400">Playing games</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-yellow-900/50 to-orange-900/50 border-yellow-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-yellow-300 text-sm">✨ New Signups</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">{playerStats.newRegistrations}</div>
+            <p className="text-xs text-gray-400">Today</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-purple-900/50 to-pink-900/50 border-purple-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-purple-300 text-sm">🔄 Retention</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">{playerStats.retentionRate.toFixed(1)}%</div>
+            <p className="text-xs text-gray-400">7-day retention</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-indigo-900/50 to-blue-900/50 border-indigo-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-indigo-300 text-sm">⏱️ Session Time</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">{playerStats.averageSessionTime.toFixed(1)}m</div>
+            <p className="text-xs text-gray-400">Average duration</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Revenue Analytics */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="bg-gradient-to-br from-green-900/50 to-emerald-900/50 border-green-500/20">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              💰 Revenue Analytics
+            </CardTitle>
+            <CardDescription className="text-gray-300">
+              Platform earnings breakdown
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-blue-500/10 rounded-lg p-3 border border-blue-500/20">
+                <div className="text-xl font-bold text-blue-300">{formatCurrency(revenueData.daily)}</div>
+                <div className="text-sm text-gray-400">Today's Revenue</div>
+              </div>
+              <div className="bg-purple-500/10 rounded-lg p-3 border border-purple-500/20">
+                <div className="text-xl font-bold text-purple-300">{formatCurrency(revenueData.weekly)}</div>
+                <div className="text-sm text-gray-400">This Week</div>
+              </div>
+              <div className="bg-orange-500/10 rounded-lg p-3 border border-orange-500/20">
+                <div className="text-xl font-bold text-orange-300">{formatCurrency(revenueData.monthly)}</div>
+                <div className="text-sm text-gray-400">This Month</div>
+              </div>
+              <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/20">
+                <div className="text-xl font-bold text-green-300">{formatCurrency(revenueData.total)}</div>
+                <div className="text-sm text-gray-400">Total Revenue</div>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <h4 className="text-white font-semibold">Game Revenue Breakdown</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300">🏃‍♂️ Temple Run 3D</span>
+                  <span className="text-white font-bold">{formatCurrency(revenueData.breakdown.templateRun)}</span>
+                </div>
+                <Progress 
+                  value={(revenueData.breakdown.templateRun / revenueData.total) * 100} 
+                  className="h-2"
+                />
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300">🏎️ Traffic Race 3D</span>
+                  <span className="text-white font-bold">{formatCurrency(revenueData.breakdown.trafficRace)}</span>
+                </div>
+                <Progress 
+                  value={(revenueData.breakdown.trafficRace / revenueData.total) * 100} 
+                  className="h-2"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-blue-900/50 to-indigo-900/50 border-blue-500/20">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              🏆 Top Spenders
+            </CardTitle>
+            <CardDescription className="text-gray-300">
+              Players with highest spending
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {playerStats.topSpenders.map((player, index) => (
+                <div
+                  key={player.id}
+                  className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="text-lg">
+                      {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👤'}
+                    </div>
+                    <div>
+                      <p className="text-white font-medium">{player.username}</p>
+                      <p className="text-xs text-gray-400">Win Rate: {player.winRate.toFixed(1)}%</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-white font-bold">{formatCurrency(player.totalSpent)}</p>
+                    <Badge 
+                      className={
+                        player.winRate >= 70 ? 'bg-green-500/20 text-green-300 border-green-500/50' :
+                        player.winRate >= 60 ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50' :
+                        'bg-red-500/20 text-red-300 border-red-500/50'
+                      }
+                    >
+                      {player.winRate >= 70 ? '🔥 Hot' : player.winRate >= 60 ? '⚡ Good' : '📈 Growing'}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Game Analytics */}
+      <Card className="bg-black/20 border-white/10">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            🎮 Game Performance Analytics
+          </CardTitle>
+          <CardDescription className="text-gray-300">
+            Detailed insights for each game
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {gameAnalytics.map((game) => (
+              <div
+                key={game.gameType}
+                className="bg-white/5 rounded-lg p-4 border border-white/10"
+              >
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-white font-semibold text-lg">{game.gameType}</h3>
+                  <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/50">
+                    {game.totalMatches.toLocaleString()} matches
+                  </Badge>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <div className="text-2xl font-bold text-green-300">{formatCurrency(game.revenue)}</div>
+                    <div className="text-sm text-gray-400">Total Revenue</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-blue-300">{game.averageMatchDuration.toFixed(1)}s</div>
+                    <div className="text-sm text-gray-400">Avg Duration</div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-gray-300 text-sm">Popularity Score</span>
+                      <span className="text-white font-bold">{game.popularityScore}%</span>
+                    </div>
+                    <Progress 
+                      value={game.popularityScore} 
+                      className="h-2"
+                      style={{ 
+                        backgroundColor: '#1f2937',
+                        '--progress-foreground': getPopularityColor(game.popularityScore)
+                      } as React.CSSProperties}
+                    />
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-white text-sm font-semibold mb-2">Win Rate Distribution</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">High Skill (70%+)</span>
+                        <span className="text-white">{game.winRates.high.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">Medium Skill (50-69%)</span>
+                        <span className="text-white">{game.winRates.medium.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">Low Skill (&lt;50%)</span>
+                        <span className="text-white">{game.winRates.low.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

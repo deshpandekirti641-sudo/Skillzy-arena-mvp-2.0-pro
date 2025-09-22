@@ -1,0 +1,90 @@
+'use client';
+
+import React, { useState } from 'react';
+import { LanguageProvider } from '../hooks/useLanguageSystem';
+import { MultiCurrencyProvider } from '../hooks/useMultiCurrency';
+import InternationalMobileAuth from '../components/InternationalMobileAuth';
+import InternationalGamingHub from '../components/InternationalGamingHub';
+
+interface User {
+  id: string;
+  mobile: string;
+  username: string;
+  balance: number;
+  currency: string;
+  language: string;
+  createdAt: string;
+}
+
+interface GameState {
+  isActive: boolean;
+  gameId: string;
+  opponentId?: string;
+  matchId?: string;
+}
+
+const SkillzyArenaApp: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [gameState, setGameState] = useState<GameState>({
+    isActive: false,
+    gameId: ''
+  });
+
+  const handleAuthentication = (userData: User): void => {
+    setUser(userData);
+    localStorage.setItem('skillzy_user', JSON.stringify(userData));
+  };
+
+  const handleStartGame = (gameId: string): void => {
+    setGameState({
+      isActive: true,
+      gameId,
+      matchId: `match_${Date.now()}`
+    });
+  };
+
+  const handleDeposit = (): void => {
+    // Deposit functionality handled in InternationalGamingHub
+    console.log('Deposit initiated');
+  };
+
+  const handleWithdraw = (): void => {
+    // Withdrawal functionality handled in InternationalGamingHub
+    console.log('Withdrawal initiated');
+  };
+
+  // Initialize user from localStorage if available
+  React.useEffect(() => {
+    const savedUser = localStorage.getItem('skillzy_user');
+    if (savedUser) {
+      try {
+        const userData = JSON.parse(savedUser);
+        setUser(userData);
+      } catch (error) {
+        console.log('Error loading saved user data');
+        localStorage.removeItem('skillzy_user');
+      }
+    }
+  }, []);
+
+  return (
+    <LanguageProvider>
+      <MultiCurrencyProvider>
+        <div className="min-h-screen">
+          {!user ? (
+            <InternationalMobileAuth onAuthenticated={handleAuthentication} />
+          ) : (
+            <InternationalGamingHub
+              userBalance={user.balance}
+              onStartGame={handleStartGame}
+              onDeposit={handleDeposit}
+              onWithdraw={handleWithdraw}
+            />
+          )}
+        </div>
+      </MultiCurrencyProvider>
+    </LanguageProvider>
+  );
+};
+
+export default SkillzyArenaApp;

@@ -1,0 +1,312 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { toast } from 'sonner'
+
+interface Transaction {
+  id: string
+  type: 'earning' | 'withdrawal' | 'bonus'
+  amount: number
+  timestamp: number
+  description: string
+  status: 'completed' | 'pending' | 'failed'
+  method?: string
+}
+
+export const DeveloperWallet: React.FC = () => {
+  const [balance, setBalance] = useState(12847.65)
+  const [totalEarnings, setTotalEarnings] = useState(45782.30)
+  const [withdrawalAmount, setWithdrawalAmount] = useState('')
+  const [withdrawalMethod, setWithdrawalMethod] = useState('')
+  const [isWithdrawing, setIsWithdrawing] = useState(false)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+
+  // Initialize with demo transactions
+  useEffect(() => {
+    const demoTransactions: Transaction[] = [
+      {
+        id: 'TXN001',
+        type: 'earning',
+        amount: 120.50,
+        timestamp: Date.now() - 3600000,
+        description: 'Platform fees from 30 matches',
+        status: 'completed'
+      },
+      {
+        id: 'TXN002',
+        type: 'withdrawal',
+        amount: -5000.00,
+        timestamp: Date.now() - 7200000,
+        description: 'UPI withdrawal to 9876543210@paytm',
+        status: 'completed',
+        method: 'UPI'
+      },
+      {
+        id: 'TXN003',
+        type: 'earning',
+        amount: 95.20,
+        timestamp: Date.now() - 10800000,
+        description: 'Platform fees from 24 matches',
+        status: 'completed'
+      },
+      {
+        id: 'TXN004',
+        type: 'bonus',
+        amount: 1000.00,
+        timestamp: Date.now() - 86400000,
+        description: 'New developer bonus',
+        status: 'completed'
+      }
+    ]
+    setTransactions(demoTransactions)
+  }, [])
+
+  // Simulate real-time earnings
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const earning = Math.random() * 20 + 5 // ₹5-25 per interval
+      setBalance(prev => prev + earning)
+      setTotalEarnings(prev => prev + earning)
+      
+      // Add new earning transaction occasionally
+      if (Math.random() < 0.3) {
+        const newTransaction: Transaction = {
+          id: `TXN${Date.now()}`,
+          type: 'earning',
+          amount: earning,
+          timestamp: Date.now(),
+          description: `Platform fees from ${Math.floor(Math.random() * 10) + 1} matches`,
+          status: 'completed'
+        }
+        setTransactions(prev => [newTransaction, ...prev.slice(0, 19)]) // Keep last 20
+      }
+    }, 15000) // Every 15 seconds
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleWithdrawal = async (): Promise<void> => {
+    if (!withdrawalAmount || !withdrawalMethod) {
+      toast.error('Please enter amount and select withdrawal method')
+      return
+    }
+
+    const amount = parseFloat(withdrawalAmount)
+    if (amount <= 0 || amount > balance) {
+      toast.error('Invalid withdrawal amount')
+      return
+    }
+
+    if (amount < 100) {
+      toast.error('Minimum withdrawal amount is ₹100')
+      return
+    }
+
+    setIsWithdrawing(true)
+
+    try {
+      // Simulate withdrawal processing
+      await new Promise(resolve => setTimeout(resolve, 2000))
+
+      const newTransaction: Transaction = {
+        id: `WTH${Date.now()}`,
+        type: 'withdrawal',
+        amount: -amount,
+        timestamp: Date.now(),
+        description: `${withdrawalMethod} withdrawal`,
+        status: 'pending',
+        method: withdrawalMethod
+      }
+
+      setTransactions(prev => [newTransaction, ...prev])
+      setBalance(prev => prev - amount)
+      setWithdrawalAmount('')
+      setWithdrawalMethod('')
+      
+      toast.success(`₹${amount} withdrawal initiated! Processing time: 2-24 hours`)
+      
+      // Simulate processing completion after 5 seconds
+      setTimeout(() => {
+        setTransactions(prev => 
+          prev.map(t => t.id === newTransaction.id ? { ...t, status: 'completed' } : t)
+        )
+        toast.success(`₹${amount} withdrawal completed!`)
+      }, 5000)
+      
+    } catch (error) {
+      toast.error('Withdrawal failed. Please try again.')
+    }
+
+    setIsWithdrawing(false)
+  }
+
+  const getTransactionIcon = (type: string): string => {
+    switch (type) {
+      case 'earning': return '💰'
+      case 'withdrawal': return '💸'
+      case 'bonus': return '🎁'
+      default: return '💳'
+    }
+  }
+
+  const getStatusBadge = (status: string): React.ReactNode => {
+    switch (status) {
+      case 'completed':
+        return <Badge className="bg-green-500/20 text-green-300 border-green-500/50">✅ Completed</Badge>
+      case 'pending':
+        return <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/50">⏳ Pending</Badge>
+      case 'failed':
+        return <Badge className="bg-red-500/20 text-red-300 border-red-500/50">❌ Failed</Badge>
+      default:
+        return <Badge>Unknown</Badge>
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Wallet Overview */}
+      <Card className="bg-gradient-to-br from-blue-900/50 to-purple-900/50 border-blue-500/20">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            💳 Developer Wallet
+          </CardTitle>
+          <CardDescription className="text-gray-300">
+            Your earnings from platform fees (20% of all bets)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="text-center">
+            <div className="text-4xl font-bold text-white mb-2">
+              ₹{balance.toFixed(2)}
+            </div>
+            <p className="text-gray-300">Available Balance</p>
+          </div>
+          
+          <div className="grid grid-cols-1 gap-4">
+            <div className="bg-black/20 rounded-lg p-4">
+              <div className="text-2xl font-bold text-green-300">
+                ₹{totalEarnings.toFixed(2)}
+              </div>
+              <p className="text-sm text-gray-400">Total Lifetime Earnings</p>
+            </div>
+          </div>
+          
+          <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/20">
+            <h4 className="text-blue-300 font-semibold mb-2">💡 Earning Info</h4>
+            <ul className="text-sm text-gray-300 space-y-1">
+              <li>• You earn 20% of every ₹10 bet (₹4 per match)</li>
+              <li>• Real-time earnings from active matches</li>
+              <li>• Minimum withdrawal: ₹100</li>
+              <li>• Processing time: 2-24 hours</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Withdrawal Panel */}
+      <Card className="bg-gradient-to-br from-green-900/50 to-blue-900/50 border-green-500/20">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            💸 Withdraw Earnings
+          </CardTitle>
+          <CardDescription className="text-gray-300">
+            Transfer your earnings to your bank account
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="amount" className="text-white">Withdrawal Amount</Label>
+            <Input
+              id="amount"
+              type="number"
+              placeholder="Enter amount (min ₹100)"
+              value={withdrawalAmount}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWithdrawalAmount(e.target.value)}
+              className="bg-white/10 border-white/20 text-white placeholder-gray-400"
+              min="100"
+              max={balance}
+            />
+            <p className="text-xs text-gray-400">
+              Available: ₹{balance.toFixed(2)} | Min: ₹100
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-white">Withdrawal Method</Label>
+            <Select value={withdrawalMethod} onValueChange={setWithdrawalMethod}>
+              <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                <SelectValue placeholder="Select withdrawal method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="UPI">📱 UPI (Instant)</SelectItem>
+                <SelectItem value="Bank Transfer">🏦 Bank Transfer (2-24 hrs)</SelectItem>
+                <SelectItem value="Net Banking">💻 Net Banking (2-24 hrs)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button 
+            onClick={handleWithdrawal}
+            disabled={isWithdrawing || !withdrawalAmount || !withdrawalMethod}
+            className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
+          >
+            {isWithdrawing ? '⏳ Processing...' : `💸 Withdraw ₹${withdrawalAmount || '0'}`}
+          </Button>
+
+          <div className="bg-yellow-500/10 rounded-lg p-3 border border-yellow-500/20">
+            <p className="text-xs text-yellow-300">
+              🔒 All withdrawals are secure and encrypted. You'll receive a confirmation SMS.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Transaction History */}
+      <Card className="lg:col-span-2 bg-black/20 border-white/10">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            📋 Transaction History
+          </CardTitle>
+          <CardDescription className="text-gray-300">
+            Recent earnings and withdrawals
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {transactions.map((transaction) => (
+              <div
+                key={transaction.id}
+                className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl">{getTransactionIcon(transaction.type)}</div>
+                  <div>
+                    <p className="text-white font-medium">
+                      {transaction.amount > 0 ? '+' : ''}₹{Math.abs(transaction.amount).toFixed(2)}
+                    </p>
+                    <p className="text-xs text-gray-400">{transaction.description}</p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(transaction.timestamp).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  {getStatusBadge(transaction.status)}
+                  {transaction.method && (
+                    <p className="text-xs text-gray-400 mt-1">{transaction.method}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

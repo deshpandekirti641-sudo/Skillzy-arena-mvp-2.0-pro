@@ -1,0 +1,1350 @@
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+
+void main() {
+  runApp(SkillzyArenaApp());
+}
+
+class SkillzyArenaApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Skillzy Arena - Real Money Gaming',
+      theme: ThemeData(
+        primarySwatch: Colors.purple,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+        fontFamily: 'Roboto',
+      ),
+      supportedLocales: [
+        Locale('en', 'US'),
+        Locale('hi', 'IN'),
+        Locale('es', 'ES'),
+        Locale('fr', 'FR'),
+        Locale('de', 'DE'),
+        Locale('zh', 'CN'),
+        Locale('ar', 'SA'),
+        Locale('pt', 'BR'),
+        Locale('ru', 'RU'),
+        Locale('ja', 'JP'),
+        Locale('ko', 'KR'),
+      ],
+      localizationsDelegates: [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      home: SplashScreen(),
+      routes: {
+        '/auth': (context) => AuthScreen(),
+        '/gaming-hub': (context) => GamingHubScreen(),
+        '/wallet': (context) => WalletScreen(),
+        '/match': (context) => MatchScreen(),
+        '/profile': (context) => ProfileScreen(),
+      },
+    );
+  }
+}
+
+class SplashScreen extends StatefulWidget {
+  @override
+  _SplashScreenState createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> 
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: Duration(seconds: 2),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    
+    _animationController.forward();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    await Future.delayed(Duration(seconds: 3));
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? userId = prefs.getString('userId');
+    
+    if (userId != null) {
+      Navigator.pushReplacementNamed(context, '/gaming-hub');
+    } else {
+      Navigator.pushReplacementNamed(context, '/auth');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF6C63FF), Color(0xFF3F51B5)],
+      ).colors[0],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF6C63FF), Color(0xFF3F51B5)],
+          ),
+        ),
+        child: Center(
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(25),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 20,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.sports_esports,
+                    size: 60,
+                    color: Color(0xFF6C63FF),
+                  ),
+                ),
+                SizedBox(height: 30),
+                Text(
+                  'SKILLZY ARENA',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2,
+                  ),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'Real Money Gaming Platform',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w300,
+                  ),
+                ),
+                SizedBox(height: 50),
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+}
+
+class AuthScreen extends StatefulWidget {
+  @override
+  _AuthScreenState createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  final TextEditingController _mobileController = TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
+  
+  String _currentStep = 'mobile'; // mobile, otp, username
+  bool _isLoading = false;
+  String _selectedCurrency = 'INR';
+  String _selectedLanguage = 'en';
+
+  final List<String> _currencies = [
+    'INR', 'USD', 'EUR', 'GBP', 'CNY', 'JPY', 'KRW', 
+    'BRL', 'RUB', 'AED', 'SAR', 'CAD', 'AUD'
+  ];
+
+  final Map<String, String> _languages = {
+    'en': 'English',
+    'hi': 'हिंदी',
+    'es': 'Español',
+    'fr': 'Français',
+    'de': 'Deutsch',
+    'zh': '中文',
+    'ar': 'العربية',
+    'pt': 'Português',
+    'ru': 'Русский',
+    'ja': '日本語',
+    'ko': '한국어',
+  };
+
+  Future<void> _sendOTP() async {
+    if (_mobileController.text.length < 10) {
+      _showSnackBar('Please enter a valid mobile number');
+      return;
+    }
+
+    setState(() { _isLoading = true; });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/auth/send-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'mobile': _mobileController.text,
+          'currency': _selectedCurrency,
+          'language': _selectedLanguage,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _currentStep = 'otp';
+          _isLoading = false;
+        });
+        _showSnackBar('OTP sent successfully! Use 123456 for demo.');
+      } else {
+        throw Exception('Failed to send OTP');
+      }
+    } catch (error) {
+      setState(() { _isLoading = false; });
+      _showSnackBar('Failed to send OTP. Please try again.');
+    }
+  }
+
+  Future<void> _verifyOTP() async {
+    if (_otpController.text.length != 6) {
+      _showSnackBar('Please enter a valid 6-digit OTP');
+      return;
+    }
+
+    setState(() { _isLoading = true; });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/auth/verify-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'mobile': _mobileController.text,
+          'otp': _otpController.text,
+          'currency': _selectedCurrency,
+          'language': _selectedLanguage,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _currentStep = 'username';
+          _isLoading = false;
+        });
+        _showSnackBar('OTP verified successfully!');
+      } else {
+        throw Exception('Invalid OTP');
+      }
+    } catch (error) {
+      setState(() { _isLoading = false; });
+      _showSnackBar('Invalid OTP. Please try again.');
+    }
+  }
+
+  Future<void> _createAccount() async {
+    if (_usernameController.text.length < 3) {
+      _showSnackBar('Username must be at least 3 characters');
+      return;
+    }
+
+    setState(() { _isLoading = true; });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/auth/create-account'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'mobile': _mobileController.text,
+          'username': _usernameController.text,
+          'currency': _selectedCurrency,
+          'language': _selectedLanguage,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        // Save user data
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userId', data['userId']);
+        await prefs.setString('username', data['username']);
+        await prefs.setString('currency', _selectedCurrency);
+        await prefs.setString('language', _selectedLanguage);
+
+        Navigator.pushReplacementNamed(context, '/gaming-hub');
+      } else {
+        throw Exception('Failed to create account');
+      }
+    } catch (error) {
+      setState(() { _isLoading = false; });
+      _showSnackBar('Failed to create account. Please try again.');
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Color(0xFF6C63FF),
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF6C63FF), Color(0xFF3F51B5)],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              children: [
+                SizedBox(height: 50),
+                _buildHeader(),
+                SizedBox(height: 40),
+                _buildLanguageCurrencySelector(),
+                SizedBox(height: 30),
+                _buildAuthForm(),
+                SizedBox(height: 30),
+                _buildFeatures(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 15,
+                offset: Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.sports_esports,
+            size: 40,
+            color: Color(0xFF6C63FF),
+          ),
+        ),
+        SizedBox(height: 20),
+        Text(
+          'SKILLZY ARENA',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.5,
+          ),
+        ),
+        Text(
+          'Real Money Gaming Platform',
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 14,
+            fontWeight: FontWeight.w300,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLanguageCurrencySelector() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 10,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Language', style: TextStyle(fontWeight: FontWeight.w600)),
+                DropdownButton<String>(
+                  value: _selectedLanguage,
+                  isExpanded: true,
+                  underline: SizedBox(),
+                  items: _languages.entries.map((entry) {
+                    return DropdownMenuItem(
+                      value: entry.key,
+                      child: Text(entry.value),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() { _selectedLanguage = value!; });
+                  },
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Currency', style: TextStyle(fontWeight: FontWeight.w600)),
+                DropdownButton<String>(
+                  value: _selectedCurrency,
+                  isExpanded: true,
+                  underline: SizedBox(),
+                  items: _currencies.map((currency) {
+                    return DropdownMenuItem(
+                      value: currency,
+                      child: Text(currency),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() { _selectedCurrency = value!; });
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuthForm() {
+    return Container(
+      padding: EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 15,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          if (_currentStep == 'mobile') _buildMobileStep(),
+          if (_currentStep == 'otp') _buildOTPStep(),
+          if (_currentStep == 'username') _buildUsernameStep(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Enter Mobile Number',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2D3748),
+          ),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 20),
+        TextField(
+          controller: _mobileController,
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(
+            prefixIcon: Icon(Icons.phone, color: Color(0xFF6C63FF)),
+            labelText: 'Mobile Number',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Color(0xFF6C63FF)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Color(0xFF6C63FF), width: 2),
+            ),
+          ),
+        ),
+        SizedBox(height: 20),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _sendOTP,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Color(0xFF6C63FF),
+            padding: EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            elevation: 3,
+          ),
+          child: _isLoading
+              ? CircularProgressIndicator(color: Colors.white)
+              : Text(
+                  'Send OTP',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOTPStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Verify OTP',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2D3748),
+          ),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 10),
+        Text(
+          'OTP sent to ${_mobileController.text}',
+          style: TextStyle(color: Colors.grey[600]),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 20),
+        TextField(
+          controller: _otpController,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          decoration: InputDecoration(
+            prefixIcon: Icon(Icons.security, color: Color(0xFF6C63FF)),
+            labelText: 'Enter OTP (123456 for demo)',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Color(0xFF6C63FF)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Color(0xFF6C63FF), width: 2),
+            ),
+            counterText: '',
+          ),
+        ),
+        SizedBox(height: 20),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _verifyOTP,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Color(0xFF6C63FF),
+            padding: EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            elevation: 3,
+          ),
+          child: _isLoading
+              ? CircularProgressIndicator(color: Colors.white)
+              : Text(
+                  'Verify OTP',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUsernameStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Create Username',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2D3748),
+          ),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 20),
+        TextField(
+          controller: _usernameController,
+          decoration: InputDecoration(
+            prefixIcon: Icon(Icons.person, color: Color(0xFF6C63FF)),
+            labelText: 'Choose Username',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Color(0xFF6C63FF)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Color(0xFF6C63FF), width: 2),
+            ),
+          ),
+        ),
+        SizedBox(height: 20),
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.green[50],
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.green[200]!),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.card_giftcard, color: Colors.green[600]),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '🎉 Welcome Bonus: ₹10 added to your wallet!',
+                  style: TextStyle(
+                    color: Colors.green[700],
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 20),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _createAccount,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Color(0xFF6C63FF),
+            padding: EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            elevation: 3,
+          ),
+          child: _isLoading
+              ? CircularProgressIndicator(color: Colors.white)
+              : Text(
+                  'Create Account & Start Gaming',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeatures() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            'Why Choose Skillzy Arena?',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 15),
+          _buildFeatureItem('🎮', 'Skill-Based Games', 'Chess, Snake & Ladder, Carrom'),
+          _buildFeatureItem('💰', 'Real Money Prizes', '80% to winner, fair payout'),
+          _buildFeatureItem('🌍', 'Global Platform', '10+ languages, 12+ currencies'),
+          _buildFeatureItem('🔒', 'Secure Gaming', 'Safe transactions & fair play'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem(String emoji, String title, String description) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Text(emoji, style: TextStyle(fontSize: 24)),
+          SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  description,
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class GamingHubScreen extends StatefulWidget {
+  @override
+  _GamingHubScreenState createState() => _GamingHubScreenState();
+}
+
+class _GamingHubScreenState extends State<GamingHubScreen> {
+  String _username = '';
+  double _walletBalance = 0.0;
+  String _currency = 'INR';
+  int _totalMatches = 0;
+  int _wins = 0;
+  double _winRate = 0.0;
+
+  final List<Map<String, dynamic>> _games = [
+    {
+      'id': 'chess',
+      'name': 'Chess Master',
+      'description': 'Strategic skill-based chess battles',
+      'icon': Icons.psychology,
+      'color': Color(0xFF4CAF50),
+      'betAmount': 10,
+    },
+    {
+      'id': 'snakeLadder',
+      'name': 'Snake & Ladder',
+      'description': 'Classic board game with strategy',
+      'icon': Icons.grid_4x4,
+      'color': Color(0xFF2196F3),
+      'betAmount': 10,
+    },
+    {
+      'id': 'carrom',
+      'name': 'Carrom Board',
+      'description': 'Precision-based skill game',
+      'icon': Icons.sports_hockey,
+      'color': Color(0xFFFF9800),
+      'betAmount': 10,
+    },
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _username = prefs.getString('username') ?? 'Player';
+      _currency = prefs.getString('currency') ?? 'INR';
+    });
+
+    // Load wallet and stats from API
+    await _fetchUserStats();
+  }
+
+  Future<void> _fetchUserStats() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? userId = prefs.getString('userId');
+      
+      if (userId != null) {
+        final response = await http.get(
+          Uri.parse('http://localhost:3000/api/wallet/$userId?currency=$_currency'),
+        );
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          setState(() {
+            _walletBalance = data['wallet']['balance'].toDouble();
+            _totalMatches = 42; // Mock data
+            _wins = 28;         // Mock data  
+            _winRate = (_wins / _totalMatches * 100);
+          });
+        }
+      }
+    } catch (error) {
+      print('Failed to fetch user stats: $error');
+    }
+  }
+
+  Future<void> _startMatch(String gameType) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? userId = prefs.getString('userId');
+
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/match/find'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'gameType': gameType,
+          'playerId': userId,
+          'currency': _currency,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        Navigator.pushNamed(context, '/match', arguments: {
+          'matchId': data['matchId'],
+          'gameType': gameType,
+          'betAmount': data['betAmount'],
+          'currency': _currency,
+        });
+      }
+    } catch (error) {
+      _showSnackBar('Failed to start match. Please try again.');
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF6C63FF), Color(0xFF3F51B5)],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                _buildHeader(),
+                _buildWalletCard(),
+                _buildStatsCard(),
+                _buildGamesSection(),
+              ],
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: _buildBottomNavigation(),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 25,
+            backgroundColor: Colors.white,
+            child: Icon(Icons.person, color: Color(0xFF6C63FF), size: 30),
+          ),
+          SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Welcome back,',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                Text(
+                  _username,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => Navigator.pushNamed(context, '/profile'),
+            icon: Icon(Icons.settings, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWalletCard() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 20),
+      padding: EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 15,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: Color(0xFF6C63FF).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(
+              Icons.account_balance_wallet,
+              color: Color(0xFF6C63FF),
+              size: 30,
+            ),
+          ),
+          SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Wallet Balance',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  '${_getCurrencySymbol(_currency)}${_walletBalance.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    color: Color(0xFF2D3748),
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pushNamed(context, '/wallet'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF6C63FF),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text('Add Cash'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsCard() {
+    return Container(
+      margin: EdgeInsets.all(20),
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 10,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem('Total Matches', _totalMatches.toString(), Icons.sports_esports),
+          _buildStatItem('Wins', _wins.toString(), Icons.emoji_events),
+          _buildStatItem('Win Rate', '${_winRate.toStringAsFixed(1)}%', Icons.trending_up),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String title, String value, IconData icon) {
+    return Column(
+      children: [
+        Container(
+          padding: EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Color(0xFF6C63FF).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: Color(0xFF6C63FF), size: 24),
+        ),
+        SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2D3748),
+          ),
+        ),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGamesSection() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Choose Your Game',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 15),
+          ..._games.map((game) => _buildGameCard(game)).toList(),
+          SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGameCard(Map<String, dynamic> game) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 10,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: EdgeInsets.all(16),
+        leading: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: game['color'].withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            game['icon'],
+            color: game['color'],
+            size: 28,
+          ),
+        ),
+        title: Text(
+          game['name'],
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Text(game['description']),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Bet: ${_getCurrencySymbol(_currency)}${game['betAmount']}',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.green[600],
+              ),
+            ),
+            Text(
+              'Win: ${_getCurrencySymbol(_currency)}${(game['betAmount'] * 1.6).toInt()}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+        onTap: () => _startMatch(game['id']),
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigation() {
+    return BottomNavigationBar(
+      type: BottomNavigationBarType.fixed,
+      currentIndex: 0,
+      selectedItemColor: Color(0xFF6C63FF),
+      unselectedItemColor: Colors.grey,
+      items: [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        BottomNavigationBarItem(icon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
+        BottomNavigationBarItem(icon: Icon(Icons.sports_esports), label: 'Matches'),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+      ],
+      onTap: (index) {
+        switch (index) {
+          case 1:
+            Navigator.pushNamed(context, '/wallet');
+            break;
+          case 2:
+            Navigator.pushNamed(context, '/match');
+            break;
+          case 3:
+            Navigator.pushNamed(context, '/profile');
+            break;
+        }
+      },
+    );
+  }
+
+  String _getCurrencySymbol(String currency) {
+    Map<String, String> symbols = {
+      'INR': '₹',
+      'USD': '\$',
+      'EUR': '€',
+      'GBP': '£',
+      'CNY': '¥',
+      'JPY': '¥',
+      'KRW': '₩',
+      'BRL': 'R\$',
+      'RUB': '₽',
+      'AED': 'د.إ',
+      'SAR': 'ر.س',
+      'CAD': 'C\$',
+      'AUD': 'A\$',
+    };
+    return symbols[currency] ?? currency + ' ';
+  }
+}
+
+class WalletScreen extends StatefulWidget {
+  @override
+  _WalletScreenState createState() => _WalletScreenState();
+}
+
+class _WalletScreenState extends State<WalletScreen> {
+  double _balance = 0.0;
+  String _currency = 'INR';
+  List<Map<String, dynamic>> _transactions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWalletData();
+  }
+
+  Future<void> _loadWalletData() async {
+    // Implementation for loading wallet data
+    setState(() {
+      _balance = 250.0;
+      _currency = 'INR';
+      _transactions = [
+        {
+          'id': 'txn_001',
+          'type': 'deposit',
+          'amount': 100.0,
+          'status': 'completed',
+          'timestamp': DateTime.now().subtract(Duration(days: 1)),
+        },
+        {
+          'id': 'txn_002', 
+          'type': 'win',
+          'amount': 16.0,
+          'status': 'completed',
+          'timestamp': DateTime.now().subtract(Duration(hours: 2)),
+        },
+      ];
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Wallet'),
+        backgroundColor: Color(0xFF6C63FF),
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            Container(
+              padding: EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF6C63FF), Color(0xFF3F51B5)],
+                ),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Current Balance',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  Text(
+                    '₹${_balance.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () {},
+                        icon: Icon(Icons.add),
+                        label: Text('Add Cash'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Color(0xFF6C63FF),
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () {},
+                        icon: Icon(Icons.remove),
+                        label: Text('Withdraw'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Color(0xFF6C63FF),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // Transaction history would go here
+            Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                'Transaction History',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class MatchScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Match Arena'),
+        backgroundColor: Color(0xFF6C63FF),
+      ),
+      body: Center(
+        child: Text(
+          'Match functionality coming soon!',
+          style: TextStyle(fontSize: 18),
+        ),
+      ),
+    );
+  }
+}
+
+class ProfileScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Profile'),
+        backgroundColor: Color(0xFF6C63FF),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Profile Settings',
+              style: TextStyle(fontSize: 18),
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () async {
+                SharedPreferences prefs = await SharedPreferences.getInstance();
+                await prefs.clear();
+                Navigator.pushNamedAndRemoveUntil(
+                  context, 
+                  '/auth', 
+                  (route) => false
+                );
+              },
+              child: Text('Logout'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

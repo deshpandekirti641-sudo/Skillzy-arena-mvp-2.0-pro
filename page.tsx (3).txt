@@ -1,0 +1,49 @@
+'use client'
+
+import React from 'react'
+import { SecureDeveloperAuth } from '@/components/SecureDeveloperAuth'
+import { SecureDeveloperDashboard } from '@/components/SecureDeveloperDashboard'
+import { useSecureDeveloperAuth } from '@/hooks/useSecureDeveloperAuth'
+
+const SecureDeveloperPage: React.FC = () => {
+  const { 
+    isAuthenticated, 
+    isLoading, 
+    developerInfo, 
+    authenticate, 
+    logout,
+    connectionStatus
+  } = useSecureDeveloperAuth()
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-indigo-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-6xl">🔐</div>
+          <div className="text-white text-xl">Loading Secure Developer Panel...</div>
+          <div className="text-sm text-gray-400">
+            Connection: {connectionStatus === 'connected' ? '🟢 Secure' : '🔴 Offline'}
+          </div>
+          <div className="flex justify-center">
+            <div className="w-8 h-8 border-4 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-indigo-900">
+      {!isAuthenticated ? (
+        <SecureDeveloperAuth onAuthenticated={authenticate} />
+      ) : (
+        <SecureDeveloperDashboard 
+          developerId={developerInfo?.developerId || 'unknown'} 
+          onLogout={logout}
+        />
+      )}
+    </div>
+  )
+}
+
+export default SecureDeveloperPage

@@ -1,0 +1,299 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Zap, Target, Clock, ArrowLeft } from 'lucide-react';
+import type { GameType } from '../../spacetime_module_bindings';
+
+interface ReactionTimeGameProps {
+  onGameEnd: (score: bigint, durationMs: number) => void;
+  onBackToHub: () => void;
+}
+
+type GameState = 'waiting' | 'ready' | 'active' | 'ended';
+
+export function ReactionTimeGame({ onGameEnd, onBackToHub }: ReactionTimeGameProps) {
+  const [gameState, setGameState] = useState<GameState>('waiting');
+  const [score, setScore] = useState(0);
+  const [round, setRound] = useState(1);
+  const [reactionTime, setReactionTime] = useState<number | null>(null);
+  const [totalReactionTime, setTotalReactionTime] = useState(0);
+  const [gameStartTime, setGameStartTime] = useState(0);
+  const [roundStartTime, setRoundStartTime] = useState(0);
+  const [targetPosition, setTargetPosition] = useState({ x: 50, y: 50 });
+  const [countdown, setCountdown] = useState(0);
+  
+  const timeoutRef = useRef<NodeJS.Timeout>();
+  const gameRef = useRef<HTMLDivElement>(null);
+  
+  const TOTAL_ROUNDS = 10;
+  const MIN_WAIT_TIME = 1000;
+  const MAX_WAIT_TIME = 4000;
+
+  const generateRandomPosition = () => {
+    // Keep targets away from edges
+    const x = 10 + Math.random() * 80;
+    const y = 10 + Math.random() * 80;
+    return { x, y };
+  };
+
+  const startRound = useCallback(() => {
+    if (round > TOTAL_ROUNDS) {
+      endGame();
+      return;
+    }
+
+    setGameState('ready');
+    setReactionTime(null);
+    setTargetPosition(generateRandomPosition());
+    
+    // Random delay before showing target
+    const waitTime = MIN_WAIT_TIME + Math.random() * (MAX_WAIT_TIME - MIN_WAIT_TIME);
+    
+    timeoutRef.current = setTimeout(() => {
+      setGameState('active');
+      setRoundStartTime(Date.now());
+    }, waitTime);
+  }, [round]);
+
+  const handleTargetClick = useCallback(() => {
+    if (gameState !== 'active') return;
+    
+    const reactionMs = Date.now() - roundStartTime;
+    setReactionTime(reactionMs);
+    setTotalReactionTime(prev => prev + reactionMs);
+    
+    // Score calculation: faster = higher score
+    // Max 1000 points for instant reaction, decreases with time
+    const roundScore = Math.max(100, 1000 - reactionMs);
+    setScore(prev => prev + roundScore);
+    
+    setGameState('waiting');
+    setRound(prev => prev + 1);
+    
+    // Brief pause to show reaction time, then next round
+    setTimeout(startRound, 1500);
+  }, [gameState, roundStartTime, startRound]);
+
+  const endGame = useCallback(() => {
+    setGameState('ended');
+    const gameDuration = Date.now() - gameStartTime;
+    const gameType: GameType = { tag: 'ReactionTime' };
+    onGameEnd(BigInt(score), gameDuration);
+  }, [score, gameStartTime, onGameEnd]);
+
+  const startGame = () => {
+    setGameState('waiting');
+    setScore(0);
+    setRound(1);
+    setTotalReactionTime(0);
+    setGameStartTime(Date.now());
+    
+    // Start countdown
+    setCountdown(3);
+    const countdownInterval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          setTimeout(startRound, 500);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const averageReaction = round > 1 ? totalReactionTime / (round - 1) : 0;
+
+  if (gameState === 'waiting' && round === 1 && countdown === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-900 via-orange-900 to-yellow-900 p-4 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 p-3 bg-gradient-to-r from-red-500 to-orange-500 rounded-full w-16 h-16 flex items-center justify-center">
+              <Zap className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Reaction Time Challenge</CardTitle>
+            <CardDescription>
+              Click the targets as quickly as possible when they appear. 
+              You'll play {TOTAL_ROUNDS} rounds. Faster reactions = higher scores!
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-yellow-50 p-4 rounded-lg">
+              <h4 className="font-medium text-yellow-800 mb-2">How to Play:</h4>
+              <ul className="text-sm text-yellow-700 space-y-1">
+                <li>• Wait for the target to appear (don't click early!)</li>
+                <li>• Click the target as fast as possible</li>
+                <li>• Faster reactions earn more points</li>
+                <li>• Complete {TOTAL_ROUNDS} rounds for final score</li>
+              </ul>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={onBackToHub} variant="outline" className="flex-1">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Hub
+              </Button>
+              <Button onClick={startGame} className="flex-1 bg-gradient-to-r from-red-500 to-orange-500">
+                Start Game
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (gameState === 'ended') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-900 via-orange-900 to-yellow-900 p-4 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 p-3 bg-gradient-to-r from-green-500 to-blue-500 rounded-full w-16 h-16 flex items-center justify-center">
+              <Target className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Game Complete!</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="text-center">
+              <div className="text-4xl font-bold text-green-600 mb-2">
+                {score.toLocaleString()}
+              </div>
+              <div className="text-gray-600">Total Points Earned</div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-xl font-bold text-blue-600">
+                  {Math.round(averageReaction)}ms
+                </div>
+                <div className="text-sm text-blue-700">Avg Reaction</div>
+              </div>
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <div className="text-xl font-bold text-purple-600">
+                  {TOTAL_ROUNDS}
+                </div>
+                <div className="text-sm text-purple-700">Rounds</div>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button onClick={onBackToHub} variant="outline" className="flex-1">
+                Back to Hub
+              </Button>
+              <Button onClick={startGame} className="flex-1 bg-gradient-to-r from-red-500 to-orange-500">
+                Play Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-red-900 via-orange-900 to-yellow-900 p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Game Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <Button onClick={onBackToHub} variant="outline" size="sm">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div className="text-white">
+              <h2 className="text-xl font-bold">Reaction Time Challenge</h2>
+              <p className="text-red-200">Round {round} of {TOTAL_ROUNDS}</p>
+            </div>
+          </div>
+          <div className="text-right text-white">
+            <div className="text-2xl font-bold">{score.toLocaleString()}</div>
+            <div className="text-red-200">Points</div>
+          </div>
+        </div>
+
+        {/* Progress Bar */}
+        <Progress value={(round - 1) / TOTAL_ROUNDS * 100} className="mb-6" />
+
+        {/* Game Area */}
+        <Card className="h-96 relative overflow-hidden">
+          <CardContent 
+            ref={gameRef}
+            className="h-full p-0 relative cursor-pointer bg-gradient-to-br from-gray-100 to-gray-200"
+          >
+            {countdown > 0 && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-6xl font-bold text-gray-600">
+                  {countdown}
+                </div>
+              </div>
+            )}
+
+            {gameState === 'ready' && countdown === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-2xl font-medium text-gray-600">
+                  Get ready...
+                </div>
+              </div>
+            )}
+
+            {gameState === 'active' && (
+              <div
+                className="absolute w-16 h-16 bg-gradient-to-r from-red-500 to-orange-500 rounded-full cursor-pointer transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center hover:scale-110 transition-transform shadow-lg animate-pulse"
+                style={{
+                  left: `${targetPosition.x}%`,
+                  top: `${targetPosition.y}%`,
+                }}
+                onClick={handleTargetClick}
+              >
+                <Target className="w-8 h-8 text-white" />
+              </div>
+            )}
+
+            {reactionTime && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-green-600 mb-2">
+                    {reactionTime}ms
+                  </div>
+                  <div className="text-gray-600">
+                    {reactionTime < 300 ? 'Excellent!' :
+                     reactionTime < 500 ? 'Good!' :
+                     reactionTime < 700 ? 'Nice!' : 'Keep trying!'}
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Stats */}
+        <div className="mt-4 grid grid-cols-3 gap-4">
+          <div className="text-center text-white">
+            <div className="text-xl font-bold">{round - 1}</div>
+            <div className="text-red-200 text-sm">Completed</div>
+          </div>
+          <div className="text-center text-white">
+            <div className="text-xl font-bold">
+              {averageReaction > 0 ? `${Math.round(averageReaction)}ms` : '--'}
+            </div>
+            <div className="text-red-200 text-sm">Avg Reaction</div>
+          </div>
+          <div className="text-center text-white">
+            <div className="text-xl font-bold">{reactionTime || '--'}ms</div>
+            <div className="text-red-200 text-sm">Last Reaction</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

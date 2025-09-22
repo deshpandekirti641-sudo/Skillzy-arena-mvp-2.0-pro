@@ -1,0 +1,416 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
+import { Keyboard, Clock, ArrowLeft, Zap } from 'lucide-react';
+import type { GameType } from '../../spacetime_module_bindings';
+
+interface SpeedTypingGameProps {
+  onGameEnd: (score: bigint, durationMs: number) => void;
+  onBackToHub: () => void;
+}
+
+type GameState = 'waiting' | 'playing' | 'ended';
+
+const WORD_LISTS = [
+  // Easy words (high frequency, short)
+  ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'was', 'one', 'our', 'out', 'day', 'get', 'use', 'man', 'new', 'now', 'old', 'see', 'him', 'two', 'how', 'its', 'who', 'did', 'yes', 'his', 'has', 'had'],
+  
+  // Medium words
+  ['about', 'would', 'there', 'could', 'other', 'after', 'first', 'never', 'these', 'think', 'where', 'being', 'every', 'great', 'might', 'shall', 'still', 'those', 'under', 'while', 'should', 'found', 'through', 'before', 'around', 'another', 'between', 'without', 'against', 'nothing', 'someone', 'towards'],
+  
+  // Hard words
+  ['important', 'different', 'following', 'something', 'experience', 'understand', 'remember', 'government', 'development', 'organization', 'information', 'professional', 'community', 'opportunity', 'relationship', 'environment', 'performance', 'achievement', 'knowledge', 'technology', 'responsibility', 'communication', 'construction', 'contribution', 'recognition', 'improvement', 'establishment', 'independence', 'transportation', 'determination']
+];
+
+export function SpeedTypingGame({ onGameEnd, onBackToHub }: SpeedTypingGameProps) {
+  const [gameState, setGameState] = useState<GameState>('waiting');
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(60); // 60 seconds
+  const [currentText, setCurrentText] = useState('');
+  const [userInput, setUserInput] = useState('');
+  const [wordsCompleted, setWordsCompleted] = useState(0);
+  const [totalCharsTyped, setTotalCharsTyped] = useState(0);
+  const [errors, setErrors] = useState(0);
+  const [currentWordIndex, setCurrentWordIndex] = useState(0);
+  const [gameStartTime, setGameStartTime] = useState(0);
+  const [wpm, setWpm] = useState(0);
+  const [accuracy, setAccuracy] = useState(100);
+  
+  const intervalRef = useRef<NodeJS.Timeout>();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const startTime = useRef(0);
+
+  const generateText = useCallback(() => {
+    // Mix of easy, medium, and hard words based on progress
+    const difficultyDistribution = wordsCompleted < 10 ? [70, 25, 5] : 
+                                 wordsCompleted < 30 ? [50, 40, 10] : 
+                                 [30, 50, 20];
+    
+    const words = [];
+    for (let i = 0; i < 20; i++) {
+      const rand = Math.random() * 100;
+      let wordList: string[];
+      
+      if (rand < difficultyDistribution[0]) {
+        wordList = WORD_LISTS[0]; // Easy
+      } else if (rand < difficultyDistribution[0] + difficultyDistribution[1]) {
+        wordList = WORD_LISTS[1]; // Medium
+      } else {
+        wordList = WORD_LISTS[2]; // Hard
+      }
+      
+      words.push(wordList[Math.floor(Math.random() * wordList.length)]);
+    }
+    
+    return words.join(' ');
+  }, [wordsCompleted]);
+
+  const calculateStats = useCallback(() => {
+    const timeElapsed = (Date.now() - startTime.current) / 1000 / 60; // minutes
+    if (timeElapsed > 0) {
+      const currentWPM = Math.round(wordsCompleted / timeElapsed);
+      const currentAccuracy = totalCharsTyped > 0 ? Math.round(((totalCharsTyped - errors) / totalCharsTyped) * 100) : 100;
+      
+      setWpm(currentWPM);
+      setAccuracy(Math.max(0, currentAccuracy));
+    }
+  }, [wordsCompleted, totalCharsTyped, errors]);
+
+  const nextText = useCallback(() => {
+    setCurrentText(generateText());
+    setUserInput('');
+    setCurrentWordIndex(0);
+  }, [generateText]);
+
+  const handleInputChange = useCallback((value: string) => {
+    setUserInput(value);
+    setTotalCharsTyped(prev => prev + 1);
+    
+    const words = currentText.split(' ');
+    const userWords = value.split(' ');
+    const currentUserWord = userWords[userWords.length - 1];
+    const targetWord = words[userWords.length - 1];
+    
+    // Check for errors in the current word
+    if (currentUserWord && targetWord) {
+      let hasError = false;
+      for (let i = 0; i < currentUserWord.length; i++) {
+        if (currentUserWord[i] !== targetWord[i]) {
+          hasError = true;
+          break;
+        }
+      }
+      
+      // Only count error once per word
+      if (hasError && currentWordIndex !== userWords.length - 1) {
+        setErrors(prev => prev + 1);
+      }
+    }
+    
+    setCurrentWordIndex(userWords.length - 1);
+    
+    // Check if text is completed
+    if (value.trim() === currentText.trim()) {
+      const completedWords = currentText.split(' ').length;
+      setWordsCompleted(prev => prev + completedWords);
+      
+      // Score calculation: WPM * accuracy bonus
+      const timeElapsed = (Date.now() - startTime.current) / 1000 / 60;
+      const currentWPM = completedWords / Math.max(timeElapsed, 0.1);
+      const accuracyMultiplier = Math.max(0.5, (totalCharsTyped - errors) / Math.max(totalCharsTyped, 1));
+      const textScore = Math.round(currentWPM * 10 * accuracyMultiplier);
+      
+      setScore(prev => prev + textScore);
+      nextText();
+    }
+  }, [currentText, totalCharsTyped, errors, currentWordIndex, nextText]);
+
+  const startGame = () => {
+    setGameState('playing');
+    setScore(0);
+    setTimeLeft(60);
+    setWordsCompleted(0);
+    setTotalCharsTyped(0);
+    setErrors(0);
+    setCurrentWordIndex(0);
+    setWpm(0);
+    setAccuracy(100);
+    setGameStartTime(Date.now());
+    startTime.current = Date.now();
+    
+    nextText();
+    
+    // Focus textarea
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+      }
+    }, 100);
+    
+    // Start countdown timer
+    intervalRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          endGame();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    // Update stats every second
+    const statsInterval = setInterval(calculateStats, 1000);
+    
+    // Clean up stats interval when game ends
+    setTimeout(() => {
+      clearInterval(statsInterval);
+    }, 61000);
+  };
+
+  const endGame = useCallback(() => {
+    setGameState('ended');
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    calculateStats();
+    const gameDuration = Date.now() - gameStartTime;
+    const gameType: GameType = { tag: 'SpeedTyping' };
+    onGameEnd(BigInt(score), gameDuration);
+  }, [score, gameStartTime, onGameEnd, calculateStats]);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, []);
+
+  if (gameState === 'waiting') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-indigo-900 p-4 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 p-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full w-16 h-16 flex items-center justify-center">
+              <Keyboard className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Speed Typing</CardTitle>
+            <CardDescription>
+              Type the given text as fast and accurately as possible. 
+              Speed and accuracy both matter for your final score!
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h4 className="font-medium text-purple-800 mb-2">How to Play:</h4>
+              <ul className="text-sm text-purple-700 space-y-1">
+                <li>• Type the displayed text exactly as shown</li>
+                <li>• Focus on both speed and accuracy</li>
+                <li>• New text appears when you finish each passage</li>
+                <li>• Higher WPM and fewer errors = higher score</li>
+                <li>• You have 60 seconds to type as much as possible</li>
+              </ul>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={onBackToHub} variant="outline" className="flex-1">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Hub
+              </Button>
+              <Button onClick={startGame} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500">
+                Start Game
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (gameState === 'ended') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-indigo-900 p-4 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 p-3 bg-gradient-to-r from-green-500 to-blue-500 rounded-full w-16 h-16 flex items-center justify-center">
+              <Zap className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Typing Complete!</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="text-center">
+              <div className="text-4xl font-bold text-green-600 mb-2">
+                {score.toLocaleString()}
+              </div>
+              <div className="text-gray-600">Total Points Earned</div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-xl font-bold text-blue-600">
+                  {wpm}
+                </div>
+                <div className="text-sm text-blue-700">WPM</div>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <div className="text-xl font-bold text-green-600">
+                  {accuracy}%
+                </div>
+                <div className="text-sm text-green-700">Accuracy</div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <div className="text-xl font-bold text-purple-600">
+                  {wordsCompleted}
+                </div>
+                <div className="text-sm text-purple-700">Words Typed</div>
+              </div>
+              <div className="text-center p-3 bg-orange-50 rounded-lg">
+                <div className="text-xl font-bold text-orange-600">
+                  {totalCharsTyped}
+                </div>
+                <div className="text-sm text-orange-700">Characters</div>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button onClick={onBackToHub} variant="outline" className="flex-1">
+                Back to Hub
+              </Button>
+              <Button onClick={startGame} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500">
+                Play Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Render text with highlighting for current word
+  const renderTextWithHighlight = () => {
+    const words = currentText.split(' ');
+    const userWords = userInput.split(' ');
+    
+    return words.map((word, index) => {
+      let className = 'px-1 rounded';
+      
+      if (index < userWords.length - 1) {
+        // Completed word
+        className += userWords[index] === word ? ' bg-green-200' : ' bg-red-200';
+      } else if (index === userWords.length - 1) {
+        // Current word
+        className += ' bg-yellow-200';
+      } else {
+        // Future word
+        className += ' text-gray-600';
+      }
+      
+      return (
+        <span key={index} className={className}>
+          {word}
+        </span>
+      );
+    }).reduce((prev, curr, index) => [prev, ' ', curr].flat());
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-900 to-indigo-900 p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Game Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <Button onClick={onBackToHub} variant="outline" size="sm">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div className="text-white">
+              <h2 className="text-xl font-bold">Speed Typing</h2>
+              <p className="text-purple-200">WPM: {wpm} • Accuracy: {accuracy}%</p>
+            </div>
+          </div>
+          <div className="text-right text-white">
+            <div className="text-2xl font-bold">{score.toLocaleString()}</div>
+            <div className="text-purple-200">Points</div>
+          </div>
+        </div>
+
+        {/* Time Progress */}
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-2 text-white">
+            <span>Time Remaining</span>
+            <span className="font-mono text-lg">
+              <Clock className="w-4 h-4 inline mr-1" />
+              {timeLeft}s
+            </span>
+          </div>
+          <Progress value={(timeLeft / 60) * 100} className="h-3" />
+        </div>
+
+        {/* Text to Type */}
+        <Card className="mb-4">
+          <CardContent className="py-6">
+            <div className="text-lg leading-relaxed font-mono p-4 bg-gray-50 rounded-lg min-h-[100px]">
+              {renderTextWithHighlight()}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* User Input */}
+        <Card className="mb-6">
+          <CardContent className="py-4">
+            <Textarea
+              ref={textareaRef}
+              value={userInput}
+              onChange={(e) => handleInputChange(e.target.value)}
+              placeholder="Start typing here..."
+              className="text-lg leading-relaxed font-mono resize-none"
+              rows={4}
+              disabled={gameState !== 'playing'}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{wpm}</div>
+                <div className="text-sm text-gray-600">WPM</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">{accuracy}%</div>
+                <div className="text-sm text-gray-600">Accuracy</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600">{wordsCompleted}</div>
+                <div className="text-sm text-gray-600">Words</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-600">{errors}</div>
+                <div className="text-sm text-gray-600">Errors</div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}

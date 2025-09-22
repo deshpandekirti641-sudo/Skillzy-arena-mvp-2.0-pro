@@ -1,0 +1,451 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import { Calculator, Clock, ArrowLeft, Check, X } from 'lucide-react';
+import type { GameType } from '../../spacetime_module_bindings';
+
+interface NumberRushGameProps {
+  onGameEnd: (score: bigint, durationMs: number) => void;
+  onBackToHub: () => void;
+}
+
+interface MathProblem {
+  question: string;
+  answer: number;
+  difficulty: number;
+}
+
+type GameState = 'waiting' | 'playing' | 'ended';
+type AnswerState = 'none' | 'correct' | 'wrong';
+
+export function NumberRushGame({ onGameEnd, onBackToHub }: NumberRushGameProps) {
+  const [gameState, setGameState] = useState<GameState>('waiting');
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(60); // 60 seconds
+  const [currentProblem, setCurrentProblem] = useState<MathProblem | null>(null);
+  const [userAnswer, setUserAnswer] = useState('');
+  const [problemsCompleted, setProblemsCompleted] = useState(0);
+  const [correctAnswers, setCorrectAnswers] = useState(0);
+  const [answerState, setAnswerState] = useState<AnswerState>('none');
+  const [gameStartTime, setGameStartTime] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [difficulty, setDifficulty] = useState(1);
+  
+  const intervalRef = useRef<NodeJS.Timeout>();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const generateProblem = useCallback((level: number): MathProblem => {
+    const operations = ['+', '-', '*'];
+    const operation = operations[Math.floor(Math.random() * operations.length)];
+    
+    let a: number, b: number, answer: number, question: string;
+    
+    if (level <= 2) {
+      // Easy: single digit addition/subtraction
+      a = Math.floor(Math.random() * 10) + 1;
+      b = Math.floor(Math.random() * 10) + 1;
+      if (operation === '-' && a < b) [a, b] = [b, a]; // Ensure positive result
+      
+      switch (operation) {
+        case '+':
+          answer = a + b;
+          question = `${a} + ${b}`;
+          break;
+        case '-':
+          answer = a - b;
+          question = `${a} - ${b}`;
+          break;
+        case '*':
+          a = Math.floor(Math.random() * 5) + 1;
+          b = Math.floor(Math.random() * 5) + 1;
+          answer = a * b;
+          question = `${a} × ${b}`;
+          break;
+        default:
+          answer = a + b;
+          question = `${a} + ${b}`;
+      }
+    } else if (level <= 4) {
+      // Medium: two digit numbers
+      a = Math.floor(Math.random() * 50) + 10;
+      b = Math.floor(Math.random() * 50) + 10;
+      if (operation === '-' && a < b) [a, b] = [b, a];
+      
+      switch (operation) {
+        case '+':
+          answer = a + b;
+          question = `${a} + ${b}`;
+          break;
+        case '-':
+          answer = a - b;
+          question = `${a} - ${b}`;
+          break;
+        case '*':
+          a = Math.floor(Math.random() * 12) + 2;
+          b = Math.floor(Math.random() * 12) + 2;
+          answer = a * b;
+          question = `${a} × ${b}`;
+          break;
+        default:
+          answer = a + b;
+          question = `${a} + ${b}`;
+      }
+    } else {
+      // Hard: larger numbers and more complex operations
+      a = Math.floor(Math.random() * 100) + 20;
+      b = Math.floor(Math.random() * 100) + 20;
+      if (operation === '-' && a < b) [a, b] = [b, a];
+      
+      switch (operation) {
+        case '+':
+          answer = a + b;
+          question = `${a} + ${b}`;
+          break;
+        case '-':
+          answer = a - b;
+          question = `${a} - ${b}`;
+          break;
+        case '*':
+          a = Math.floor(Math.random() * 20) + 5;
+          b = Math.floor(Math.random() * 20) + 5;
+          answer = a * b;
+          question = `${a} × ${b}`;
+          break;
+        default:
+          answer = a + b;
+          question = `${a} + ${b}`;
+      }
+    }
+    
+    return { question, answer, difficulty: level };
+  }, []);
+
+  const nextProblem = useCallback(() => {
+    // Increase difficulty based on streak
+    const currentDifficulty = Math.min(5, Math.floor(streak / 5) + 1);
+    setDifficulty(currentDifficulty);
+    
+    const problem = generateProblem(currentDifficulty);
+    setCurrentProblem(problem);
+    setUserAnswer('');
+    setAnswerState('none');
+    
+    // Focus input
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 100);
+  }, [generateProblem, streak]);
+
+  const checkAnswer = useCallback(() => {
+    if (!currentProblem || userAnswer.trim() === '') return;
+    
+    const userNum = parseInt(userAnswer.trim());
+    const isCorrect = userNum === currentProblem.answer;
+    
+    setAnswerState(isCorrect ? 'correct' : 'wrong');
+    setProblemsCompleted(prev => prev + 1);
+    
+    if (isCorrect) {
+      setCorrectAnswers(prev => prev + 1);
+      setStreak(prev => prev + 1);
+      
+      // Score based on difficulty and time bonus
+      const basePoints = currentProblem.difficulty * 10;
+      const timeBonus = Math.max(0, timeLeft - 50); // Bonus for solving quickly
+      const streakBonus = Math.min(streak * 2, 20); // Up to 20 bonus points for streak
+      const totalPoints = basePoints + timeBonus + streakBonus;
+      
+      setScore(prev => prev + totalPoints);
+    } else {
+      setStreak(0); // Reset streak on wrong answer
+    }
+    
+    // Show result briefly, then next problem
+    setTimeout(() => {
+      nextProblem();
+    }, 800);
+  }, [currentProblem, userAnswer, timeLeft, streak, nextProblem]);
+
+  const startGame = () => {
+    setGameState('playing');
+    setScore(0);
+    setTimeLeft(60);
+    setProblemsCompleted(0);
+    setCorrectAnswers(0);
+    setStreak(0);
+    setDifficulty(1);
+    setGameStartTime(Date.now());
+    
+    nextProblem();
+    
+    // Start countdown timer
+    intervalRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          endGame();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const endGame = useCallback(() => {
+    setGameState('ended');
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    const gameDuration = Date.now() - gameStartTime;
+    const gameType: GameType = { tag: 'NumberRush' };
+    onGameEnd(BigInt(score), gameDuration);
+  }, [score, gameStartTime, onGameEnd]);
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && gameState === 'playing') {
+      checkAnswer();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, []);
+
+  if (gameState === 'waiting') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-900 via-teal-900 to-blue-900 p-4 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 p-3 bg-gradient-to-r from-green-500 to-teal-500 rounded-full w-16 h-16 flex items-center justify-center">
+              <Calculator className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Number Rush</CardTitle>
+            <CardDescription>
+              Solve as many math problems as possible in 60 seconds. 
+              Speed and accuracy earn the highest scores!
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h4 className="font-medium text-green-800 mb-2">How to Play:</h4>
+              <ul className="text-sm text-green-700 space-y-1">
+                <li>• Solve math problems as quickly as possible</li>
+                <li>• Type your answer and press Enter</li>
+                <li>• Correct streaks give bonus points</li>
+                <li>• Problems get harder as you improve</li>
+                <li>• You have 60 seconds - make them count!</li>
+              </ul>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={onBackToHub} variant="outline" className="flex-1">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Hub
+              </Button>
+              <Button onClick={startGame} className="flex-1 bg-gradient-to-r from-green-500 to-teal-500">
+                Start Game
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (gameState === 'ended') {
+    const accuracy = problemsCompleted > 0 ? Math.round((correctAnswers / problemsCompleted) * 100) : 0;
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-900 via-teal-900 to-blue-900 p-4 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 p-3 bg-gradient-to-r from-green-500 to-blue-500 rounded-full w-16 h-16 flex items-center justify-center">
+              <Calculator className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Time's Up!</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="text-center">
+              <div className="text-4xl font-bold text-green-600 mb-2">
+                {score.toLocaleString()}
+              </div>
+              <div className="text-gray-600">Total Points Earned</div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <div className="text-xl font-bold text-green-600">
+                  {correctAnswers}
+                </div>
+                <div className="text-sm text-green-700">Correct</div>
+              </div>
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-xl font-bold text-blue-600">
+                  {accuracy}%
+                </div>
+                <div className="text-sm text-blue-700">Accuracy</div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <div className="text-xl font-bold text-purple-600">
+                  {problemsCompleted}
+                </div>
+                <div className="text-sm text-purple-700">Total Problems</div>
+              </div>
+              <div className="text-center p-3 bg-orange-50 rounded-lg">
+                <div className="text-xl font-bold text-orange-600">
+                  {Math.round(correctAnswers / 60 * 60) || 0}
+                </div>
+                <div className="text-sm text-orange-700">Problems/Min</div>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button onClick={onBackToHub} variant="outline" className="flex-1">
+                Back to Hub
+              </Button>
+              <Button onClick={startGame} className="flex-1 bg-gradient-to-r from-green-500 to-teal-500">
+                Play Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-green-900 via-teal-900 to-blue-900 p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Game Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <Button onClick={onBackToHub} variant="outline" size="sm">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div className="text-white">
+              <h2 className="text-xl font-bold">Number Rush</h2>
+              <p className="text-green-200">Level {difficulty} • Streak: {streak}</p>
+            </div>
+          </div>
+          <div className="text-right text-white">
+            <div className="text-2xl font-bold">{score.toLocaleString()}</div>
+            <div className="text-green-200">Points</div>
+          </div>
+        </div>
+
+        {/* Time Progress */}
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-2 text-white">
+            <span>Time Remaining</span>
+            <span className="font-mono text-lg">
+              <Clock className="w-4 h-4 inline mr-1" />
+              {timeLeft}s
+            </span>
+          </div>
+          <Progress value={(timeLeft / 60) * 100} className="h-3" />
+        </div>
+
+        {/* Math Problem */}
+        <Card className="mb-6">
+          <CardContent className="py-8">
+            {currentProblem && (
+              <div className="text-center">
+                <div className="text-6xl font-bold text-gray-800 mb-6">
+                  {currentProblem.question} = ?
+                </div>
+                
+                <div className="max-w-xs mx-auto relative">
+                  <Input
+                    ref={inputRef}
+                    type="number"
+                    value={userAnswer}
+                    onChange={(e) => setUserAnswer(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Type your answer..."
+                    className="text-2xl text-center py-4 text-gray-800"
+                    disabled={answerState !== 'none'}
+                  />
+                  
+                  {answerState === 'correct' && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <Check className="w-6 h-6 text-green-500" />
+                    </div>
+                  )}
+                  
+                  {answerState === 'wrong' && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <X className="w-6 h-6 text-red-500" />
+                    </div>
+                  )}
+                </div>
+                
+                <Button
+                  onClick={checkAnswer}
+                  className="mt-4 bg-gradient-to-r from-green-500 to-teal-500 hover:opacity-90"
+                  disabled={!userAnswer.trim() || answerState !== 'none'}
+                >
+                  Submit Answer
+                </Button>
+                
+                {answerState === 'wrong' && currentProblem && (
+                  <div className="mt-4 text-red-600 font-medium">
+                    Correct answer: {currentProblem.answer}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">{correctAnswers}</div>
+                <div className="text-sm text-gray-600">Correct</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{problemsCompleted}</div>
+                <div className="text-sm text-gray-600">Total</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600">{streak}</div>
+                <div className="text-sm text-gray-600">Streak</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-600">
+                  {problemsCompleted > 0 ? Math.round((correctAnswers / problemsCompleted) * 100) : 0}%
+                </div>
+                <div className="text-sm text-gray-600">Accuracy</div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}

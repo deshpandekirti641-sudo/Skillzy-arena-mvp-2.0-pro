@@ -1,0 +1,602 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import type { FC } from 'react'
+
+interface PlayLog {
+  id: string
+  gameType: 'chess' | 'snake-ladder' | 'carrom'
+  opponentName: string
+  opponentId: string
+  startTime: string
+  endTime: string
+  duration: number // in seconds
+  result: 'win' | 'loss' | 'draw'
+  score: {
+    player: number
+    opponent: number
+  }
+  betAmount: number
+  winAmount: number
+  gameData: any // specific game data
+  timestamp: string
+}
+
+interface PlayStats {
+  totalGames: number
+  gamesWon: number
+  gamesLost: number
+  gamesDrawn: number
+  totalTimeSpent: number // in minutes
+  totalEarnings: number
+  totalBets: number
+  averageGameDuration: number // in minutes
+  winRate: number
+  favoriteGame: string
+  longestGame: number // in minutes
+  streak: {
+    current: number
+    longest: number
+    type: 'win' | 'loss' | null
+  }
+}
+
+interface PlayLogsSystemProps {
+  isOpen: boolean
+  onClose: () => void
+  playLogs: PlayLog[]
+}
+
+const PlayLogsSystem: FC<PlayLogsSystemProps> = ({
+  isOpen,
+  onClose,
+  playLogs
+}) => {
+  const [activeTab, setActiveTab] = useState<'recent' | 'stats' | 'analytics'>('recent')
+  const [selectedGame, setSelectedGame] = useState<'all' | 'chess' | 'snake-ladder' | 'carrom'>('all')
+  const [filteredLogs, setFilteredLogs] = useState<PlayLog[]>(playLogs)
+  const [playStats, setPlayStats] = useState<PlayStats | null>(null)
+  const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month' | 'all'>('week')
+
+  useEffect(() => {
+    // Filter logs based on selected game and time range
+    let filtered = [...playLogs]
+
+    // Filter by game type
+    if (selectedGame !== 'all') {
+      filtered = filtered.filter(log => log.gameType === selectedGame)
+    }
+
+    // Filter by time range
+    const now = new Date()
+    switch (timeRange) {
+      case 'today':
+        filtered = filtered.filter(log => {
+          const logDate = new Date(log.timestamp)
+          return logDate.toDateString() === now.toDateString()
+        })
+        break
+      case 'week':
+        filtered = filtered.filter(log => {
+          const logDate = new Date(log.timestamp)
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          return logDate >= weekAgo
+        })
+        break
+      case 'month':
+        filtered = filtered.filter(log => {
+          const logDate = new Date(log.timestamp)
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          return logDate >= monthAgo
+        })
+        break
+      default:
+        // 'all' - no time filtering
+        break
+    }
+
+    // Sort by most recent first
+    filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
+    setFilteredLogs(filtered)
+
+    // Calculate stats
+    calculatePlayStats(filtered)
+  }, [playLogs, selectedGame, timeRange])
+
+  const calculatePlayStats = (logs: PlayLog[]) => {
+    if (logs.length === 0) {
+      setPlayStats(null)
+      return
+    }
+
+    const totalGames = logs.length
+    const gamesWon = logs.filter(log => log.result === 'win').length
+    const gamesLost = logs.filter(log => log.result === 'loss').length
+    const gamesDrawn = logs.filter(log => log.result === 'draw').length
+    const totalTimeSpent = logs.reduce((sum, log) => sum + log.duration, 0) / 60 // convert to minutes
+    const totalEarnings = logs.reduce((sum, log) => sum + (log.winAmount - log.betAmount), 0)
+    const totalBets = logs.reduce((sum, log) => sum + log.betAmount, 0)
+    const averageGameDuration = totalTimeSpent / totalGames
+    const winRate = (gamesWon / totalGames) * 100
+
+    // Find favorite game
+    const gameCount = {
+      chess: logs.filter(log => log.gameType === 'chess').length,
+      'snake-ladder': logs.filter(log => log.gameType === 'snake-ladder').length,
+      carrom: logs.filter(log => log.gameType === 'carrom').length
+    }
+    const favoriteGame = Object.entries(gameCount).reduce((a, b) => gameCount[a[0] as keyof typeof gameCount] > gameCount[b[0] as keyof typeof gameCount] ? a : b)[0]
+
+    // Find longest game
+    const longestGame = Math.max(...logs.map(log => log.duration)) / 60
+
+    // Calculate streak
+    let currentStreak = 0
+    let longestStreak = 0
+    let currentStreakType: 'win' | 'loss' | null = null
+    let tempStreak = 0
+    let tempType: 'win' | 'loss' | null = null
+
+    // Sort by timestamp to calculate streak properly
+    const sortedLogs = [...logs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+    for (let i = 0; i < sortedLogs.length; i++) {
+      const result = sortedLogs[i].result
+      
+      if (result === 'draw') continue // Skip draws in streak calculation
+
+      if (result === tempType || tempType === null) {
+        tempStreak++
+        tempType = result
+      } else {
+        if (tempStreak > longestStreak) {
+          longestStreak = tempStreak
+        }
+        tempStreak = 1
+        tempType = result
+      }
+
+      // Current streak is the streak at the end
+      if (i === sortedLogs.length - 1) {
+        currentStreak = tempStreak
+        currentStreakType = tempType
+      }
+    }
+
+    if (tempStreak > longestStreak) {
+      longestStreak = tempStreak
+    }
+
+    setPlayStats({
+      totalGames,
+      gamesWon,
+      gamesLost,
+      gamesDrawn,
+      totalTimeSpent,
+      totalEarnings,
+      totalBets,
+      averageGameDuration,
+      winRate,
+      favoriteGame,
+      longestGame,
+      streak: {
+        current: currentStreak,
+        longest: longestStreak,
+        type: currentStreakType
+      }
+    })
+  }
+
+  const formatDuration = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    if (minutes === 0) {
+      return `${remainingSeconds}s`
+    }
+    return `${minutes}m ${remainingSeconds}s`
+  }
+
+  const formatTime = (dateString: string): string => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffHours = diffMs / (1000 * 60 * 60)
+    const diffDays = diffMs / (1000 * 60 * 60 * 24)
+
+    if (diffHours < 1) {
+      const diffMinutes = Math.floor(diffMs / (1000 * 60))
+      return `${diffMinutes}m ago`
+    } else if (diffHours < 24) {
+      return `${Math.floor(diffHours)}h ago`
+    } else if (diffDays < 7) {
+      return `${Math.floor(diffDays)}d ago`
+    } else {
+      return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+    }
+  }
+
+  const getGameIcon = (gameType: string): string => {
+    switch (gameType) {
+      case 'chess': return '♔'
+      case 'snake-ladder': return '🐍'
+      case 'carrom': return '🎯'
+      default: return '🎮'
+    }
+  }
+
+  const getResultColor = (result: string): string => {
+    switch (result) {
+      case 'win': return 'text-green-600 bg-green-50'
+      case 'loss': return 'text-red-600 bg-red-50'
+      case 'draw': return 'text-yellow-600 bg-yellow-50'
+      default: return 'text-gray-600 bg-gray-50'
+    }
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-hidden">
+        
+        {/* Header */}
+        <div className="sticky top-0 bg-white rounded-t-3xl border-b p-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-800">Play Logs</h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Tab Selector */}
+        <div className="p-4 pb-0">
+          <div className="bg-gray-100 rounded-2xl p-1 flex">
+            <button
+              onClick={() => setActiveTab('recent')}
+              className={`flex-1 py-2 px-3 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'recent'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              📋 Recent
+            </button>
+            <button
+              onClick={() => setActiveTab('stats')}
+              className={`flex-1 py-2 px-3 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'stats'
+                  ? 'bg-white text-green-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              📊 Stats
+            </button>
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`flex-1 py-2 px-3 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'analytics'
+                  ? 'bg-white text-purple-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              📈 Analytics
+            </button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="p-4 space-y-3">
+          {/* Game Filter */}
+          <div className="bg-gray-100 rounded-2xl p-1 flex">
+            {['all', 'chess', 'snake-ladder', 'carrom'].map((game) => (
+              <button
+                key={game}
+                onClick={() => setSelectedGame(game as any)}
+                className={`flex-1 py-1 px-2 rounded-xl font-medium text-xs transition-all ${
+                  selectedGame === game
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {game === 'all' ? '🎮 All' : `${getGameIcon(game)} ${game.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`}
+              </button>
+            ))}
+          </div>
+
+          {/* Time Range Filter */}
+          <div className="bg-gray-100 rounded-2xl p-1 flex">
+            {[
+              { id: 'today', name: 'Today' },
+              { id: 'week', name: 'Week' },
+              { id: 'month', name: 'Month' },
+              { id: 'all', name: 'All Time' }
+            ].map((range) => (
+              <button
+                key={range.id}
+                onClick={() => setTimeRange(range.id as any)}
+                className={`flex-1 py-1 px-2 rounded-xl font-medium text-xs transition-all ${
+                  timeRange === range.id
+                    ? 'bg-white text-purple-600 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {range.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="overflow-y-auto max-h-[60vh]">
+          
+          {/* Recent Tab */}
+          {activeTab === 'recent' && (
+            <div className="p-4 space-y-3">
+              <h3 className="font-medium text-gray-800">
+                {filteredLogs.length} Game{filteredLogs.length !== 1 ? 's' : ''} Found
+              </h3>
+              
+              {filteredLogs.length > 0 ? (
+                <div className="space-y-2">
+                  {filteredLogs.slice(0, 20).map((log) => (
+                    <div key={log.id} className="bg-gray-50 rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xl">{getGameIcon(log.gameType)}</span>
+                          <div>
+                            <p className="font-medium text-gray-800 text-sm">
+                              vs {log.opponentName}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {formatTime(log.timestamp)}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="text-right">
+                          <div className={`px-2 py-1 rounded-lg text-xs font-bold ${getResultColor(log.result)}`}>
+                            {log.result.toUpperCase()}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
+                        <div>
+                          <p>Duration</p>
+                          <p className="font-medium text-gray-800">{formatDuration(log.duration)}</p>
+                        </div>
+                        <div>
+                          <p>Score</p>
+                          <p className="font-medium text-gray-800">{log.score.player}-{log.score.opponent}</p>
+                        </div>
+                        <div>
+                          <p>Earnings</p>
+                          <p className={`font-medium ${log.winAmount > log.betAmount ? 'text-green-600' : 'text-red-600'}`}>
+                            {log.winAmount > log.betAmount ? '+' : ''}₹{log.winAmount - log.betAmount}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center p-8">
+                  <div className="text-4xl mb-4">🎮</div>
+                  <h3 className="text-lg font-bold text-gray-800 mb-2">No Games Found</h3>
+                  <p className="text-gray-600 text-sm">
+                    Start playing to see your game history
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Stats Tab */}
+          {activeTab === 'stats' && playStats && (
+            <div className="p-4 space-y-4">
+              {/* Win Rate Card */}
+              <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-4 text-white">
+                <div className="text-center">
+                  <p className="text-sm opacity-90">Win Rate</p>
+                  <p className="text-3xl font-bold">{playStats.winRate.toFixed(1)}%</p>
+                  <p className="text-sm opacity-90">
+                    {playStats.gamesWon} wins out of {playStats.totalGames} games
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick Stats Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-blue-50 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-600">{playStats.totalGames}</p>
+                  <p className="text-sm text-blue-700">Total Games</p>
+                </div>
+                <div className="bg-purple-50 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-purple-600">
+                    {Math.round(playStats.totalTimeSpent)}m
+                  </p>
+                  <p className="text-sm text-purple-700">Time Played</p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-3 text-center">
+                  <p className={`text-2xl font-bold ${playStats.totalEarnings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {playStats.totalEarnings >= 0 ? '+' : ''}₹{playStats.totalEarnings}
+                  </p>
+                  <p className="text-sm text-green-700">Net Earnings</p>
+                </div>
+                <div className="bg-yellow-50 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-yellow-600">
+                    {Math.round(playStats.averageGameDuration)}m
+                  </p>
+                  <p className="text-sm text-yellow-700">Avg Duration</p>
+                </div>
+              </div>
+
+              {/* Detailed Stats */}
+              <div className="space-y-3">
+                <h4 className="font-medium text-gray-800">📋 Detailed Stats</h4>
+                
+                <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Games Won</span>
+                    <span className="font-bold text-green-600">{playStats.gamesWon}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Games Lost</span>
+                    <span className="font-bold text-red-600">{playStats.gamesLost}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Games Drawn</span>
+                    <span className="font-bold text-yellow-600">{playStats.gamesDrawn}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Total Bets</span>
+                    <span className="font-bold text-gray-800">₹{playStats.totalBets}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Favorite Game</span>
+                    <span className="font-bold text-blue-600">
+                      {getGameIcon(playStats.favoriteGame)} {playStats.favoriteGame.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Longest Game</span>
+                    <span className="font-bold text-purple-600">{Math.round(playStats.longestGame)}m</span>
+                  </div>
+                </div>
+
+                {/* Current Streak */}
+                {playStats.streak.type && (
+                  <div className={`rounded-2xl p-4 ${
+                    playStats.streak.type === 'win' 
+                      ? 'bg-green-50 border border-green-200' 
+                      : 'bg-red-50 border border-red-200'
+                  }`}>
+                    <h4 className={`font-bold mb-2 ${
+                      playStats.streak.type === 'win' ? 'text-green-800' : 'text-red-800'
+                    }`}>
+                      🔥 Current {playStats.streak.type === 'win' ? 'Win' : 'Loss'} Streak
+                    </h4>
+                    <p className={`text-2xl font-bold ${
+                      playStats.streak.type === 'win' ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {playStats.streak.current} game{playStats.streak.current !== 1 ? 's' : ''}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Longest streak: {playStats.streak.longest} games
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Analytics Tab */}
+          {activeTab === 'analytics' && playStats && (
+            <div className="p-4 space-y-4">
+              <h3 className="font-medium text-gray-800">📈 Performance Analytics</h3>
+
+              {/* Performance Score */}
+              <div className="bg-gradient-to-r from-purple-500 to-pink-600 rounded-2xl p-4 text-white">
+                <div className="text-center">
+                  <p className="text-sm opacity-90">Performance Score</p>
+                  <p className="text-3xl font-bold">
+                    {Math.round((playStats.winRate + (playStats.totalEarnings > 0 ? 20 : 0) + Math.min(playStats.totalGames, 50)) / 2)}
+                  </p>
+                  <p className="text-sm opacity-90">Out of 100</p>
+                </div>
+              </div>
+
+              {/* Game Distribution */}
+              <div className="space-y-3">
+                <h4 className="font-medium text-gray-800">🎮 Game Distribution</h4>
+                <div className="space-y-2">
+                  {['chess', 'snake-ladder', 'carrom'].map((game) => {
+                    const gameCount = filteredLogs.filter(log => log.gameType === game).length
+                    const percentage = filteredLogs.length > 0 ? (gameCount / filteredLogs.length) * 100 : 0
+                    return (
+                      <div key={game} className="bg-gray-50 rounded-xl p-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="flex items-center space-x-2">
+                            <span>{getGameIcon(game)}</span>
+                            <span className="font-medium text-gray-800 text-sm">
+                              {game.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                            </span>
+                          </div>
+                          <span className="text-sm font-bold text-gray-600">
+                            {gameCount} ({percentage.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${percentage}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Recent Performance */}
+              <div className="space-y-3">
+                <h4 className="font-medium text-gray-800">📊 Recent Performance</h4>
+                <div className="bg-gray-50 rounded-2xl p-4">
+                  <div className="flex justify-center space-x-1 mb-3">
+                    {filteredLogs.slice(0, 10).reverse().map((log, index) => (
+                      <div
+                        key={index}
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                          log.result === 'win' ? 'bg-green-500 text-white' :
+                          log.result === 'loss' ? 'bg-red-500 text-white' :
+                          'bg-yellow-500 text-white'
+                        }`}
+                      >
+                        {log.result === 'win' ? 'W' : log.result === 'loss' ? 'L' : 'D'}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 text-center">Last 10 games (left = oldest)</p>
+                </div>
+              </div>
+
+              {/* Improvement Tips */}
+              <div className="bg-blue-50 rounded-2xl p-4">
+                <h4 className="font-bold text-blue-800 mb-2">💡 Tips to Improve</h4>
+                <div className="space-y-1 text-sm text-blue-700">
+                  {playStats.winRate < 50 && (
+                    <p>• Focus on strategy - practice makes perfect!</p>
+                  )}
+                  {playStats.averageGameDuration < 30 && (
+                    <p>• Take your time - rushed moves often lead to mistakes</p>
+                  )}
+                  {playStats.totalEarnings < 0 && (
+                    <p>• Consider playing practice games to improve your skills</p>
+                  )}
+                  <p>• Study your opponent's patterns during gameplay</p>
+                  <p>• Stay calm and focused during matches</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!playStats && filteredLogs.length === 0 && (
+            <div className="p-8 text-center">
+              <div className="text-4xl mb-4">📊</div>
+              <h3 className="text-lg font-bold text-gray-800 mb-2">No Data Available</h3>
+              <p className="text-gray-600 text-sm">
+                Play some games to see your statistics and analytics
+              </p>
+            </div>
+          )}
+
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+export default PlayLogsSystem

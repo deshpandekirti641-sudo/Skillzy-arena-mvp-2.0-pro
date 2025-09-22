@@ -1,0 +1,308 @@
+'use client';
+
+import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { toast } from 'sonner';
+import type { PlayerProfile, PlayerWallet, DeveloperEarnings, GameType } from '../spacetime_module_bindings/betting_types';
+
+interface RealBettingHubProps {
+  playerProfile: PlayerProfile;
+  playerWallet: PlayerWallet;
+  developerEarnings: DeveloperEarnings | null;
+  onFindMatch: (gameType: GameType, betAmount: number) => void;
+  onDeposit: (amount: number) => void;
+}
+
+const GAMES = [
+  {
+    id: 'TrafficRace',
+    title: '🏁 Traffic Race 3D',
+    description: 'High-speed 3D racing through dynamic traffic',
+    icon: '🏁',
+    color: 'from-red-500 to-orange-500',
+    featured: true,
+  },
+  {
+    id: 'TempleRun',
+    title: '🏛️ Temple Run 3D',
+    description: 'Epic 3D temple adventure with realistic physics',
+    icon: '🏛️',
+    color: 'from-orange-500 to-red-500',
+    featured: true,
+  },
+  {
+    id: 'ReactionTime',
+    title: '⚡ Reaction Time',
+    description: 'Test your reflexes - click targets fast!',
+    icon: '⚡',
+    color: 'from-yellow-500 to-orange-500',
+  },
+  {
+    id: 'MemoryPatterns', 
+    title: '🧠 Memory Patterns',
+    description: 'Remember and repeat color sequences',
+    icon: '🧠',
+    color: 'from-purple-500 to-pink-500',
+  },
+  {
+    id: 'NumberRush',
+    title: '🔢 Number Rush', 
+    description: 'Solve math problems at lightning speed',
+    icon: '🔢',
+    color: 'from-blue-500 to-cyan-500',
+  },
+  {
+    id: 'SpeedTyping',
+    title: '⌨️ Speed Typing',
+    description: 'Type words faster than your opponent',
+    icon: '⌨️',
+    color: 'from-green-500 to-teal-500',
+  },
+] as const;
+
+const BET_AMOUNT = 10; // Only ₹10 betting for all games
+
+export function RealBettingHub({ 
+  playerProfile, 
+  playerWallet, 
+  developerEarnings,
+  onFindMatch, 
+  onDeposit 
+}: RealBettingHubProps) {
+  const [selectedGame, setSelectedGame] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+
+  const balance = Number(playerWallet.balanceCents) / 100;
+  const totalGames = playerProfile.totalGamesPlayed;
+  const totalWins = playerProfile.totalWins;
+  const winRate = totalGames > 0 ? ((totalWins / totalGames) * 100).toFixed(1) : '0.0';
+  const totalLosses = totalGames - totalWins;
+  
+  // Format balance in rupees
+  const formatBalance = (cents: bigint) => `₹${(Number(cents) / 100).toFixed(2)}`;
+  const balanceRupees = formatBalance(playerWallet.balanceCents);
+
+  const handleFindMatch = async () => {
+    if (!selectedGame) {
+      toast.error('Please select a game first');
+      return;
+    }
+    
+    if (balance < BET_AMOUNT) {
+      toast.error(`Insufficient balance! You need ₹${BET_AMOUNT} to play.`);
+      return;
+    }
+
+    setIsSearching(true);
+    
+    try {
+      const gameType = { tag: selectedGame } as GameType;
+      await onFindMatch(gameType, BET_AMOUNT);
+      
+      // Success feedback is handled by the parent component
+    } catch (error) {
+      console.error('Find match error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to find match. Please try again.');
+      setIsSearching(false);
+    }
+  };
+
+  const handleDeposit = async (amount: number) => {
+    try {
+      await onDeposit(amount);
+    } catch (error) {
+      console.error('Deposit error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to deposit funds. Please try again.');
+    }
+  };
+
+  const canAffordBet = balance >= BET_AMOUNT;
+  const selectedBet = BET_AMOUNT;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4">
+      {/* Header */}
+      <div className="max-w-6xl mx-auto mb-8">
+        <div className="text-center mb-6">
+          <h1 className="text-4xl font-bold text-white mb-2">💰 Skillzy Arena</h1>
+          <p className="text-xl text-white/80">Real Money 1v1 Skill Battles</p>
+          <p className="text-sm text-white/60 mt-1">Welcome back, {playerProfile.username}!</p>
+        </div>
+
+        {/* Player Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white">
+            <CardContent className="p-4 text-center">
+              <p className="text-sm opacity-80">Balance</p>
+              <p className="text-2xl font-bold text-green-400">{balanceRupees}</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white">
+            <CardContent className="p-4 text-center">
+              <p className="text-sm opacity-80">Games</p>
+              <p className="text-2xl font-bold">{totalGames}</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white">
+            <CardContent className="p-4 text-center">
+              <p className="text-sm opacity-80">Win Rate</p>
+              <p className="text-2xl font-bold text-yellow-400">{winRate}%</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white">
+            <CardContent className="p-4 text-center">
+              <p className="text-sm opacity-80">Record</p>
+              <p className="text-lg font-bold">
+                <span className="text-green-400">{totalWins}W</span>
+                <span className="text-white/60"> - </span>
+                <span className="text-red-400">{totalLosses}L</span>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Game Selection */}
+      <div className="max-w-4xl mx-auto">
+        <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white">
+          <CardHeader>
+            <CardTitle className="text-center text-2xl">Choose Your Battle Arena</CardTitle>
+            <p className="text-center text-white/80">Select a game and compete with real players for real money!</p>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            
+            {/* Games Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {GAMES.map((game) => (
+                <Card
+                  key={game.id}
+                  className={`cursor-pointer transition-all transform hover:scale-105 duration-200 ${ 
+                    selectedGame === game.id 
+                      ? 'ring-4 ring-yellow-400 bg-white/20 shadow-lg' 
+                      : 'bg-white/5 hover:bg-white/10 hover:shadow-md'
+                  } border-white/20`}
+                  onClick={() => setSelectedGame(game.id)}
+                >
+                  <CardContent className="p-6 text-center">
+                    <div className="text-4xl mb-3">{game.icon}</div>
+                    <h3 className="text-xl font-bold text-white mb-2">{game.title}</h3>
+                    <p className="text-white/70 text-sm leading-relaxed">{game.description}</p>
+                    
+                    {game.featured && (
+                      <Badge className="mt-2 bg-yellow-500 text-black font-semibold">
+                        🔥 Popular
+                      </Badge>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Bet Amount Display */}
+            {selectedGame && (
+              <div className="space-y-4">
+                <h3 className="text-xl font-semibold text-center">🎯 Fixed Bet Amount</h3>
+                <div className="flex justify-center">
+                  <div className="bg-gradient-to-r from-yellow-500 to-orange-500 p-6 rounded-xl text-center max-w-xs">
+                    <div className="text-3xl font-bold text-black mb-2">₹{BET_AMOUNT}</div>
+                    <div className="text-black/80 font-medium mb-2">Universal bet for all games</div>
+                    <div className="text-sm text-black/70 space-y-1">
+                      <div>Winner gets: <span className="font-bold">₹{(BET_AMOUNT * 1.6).toFixed(0)}</span></div>
+                      <div>Platform fee: <span className="font-bold">₹{(BET_AMOUNT * 0.4).toFixed(0)}</span></div>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-center text-sm text-white/70">
+                  💰 Fair 80/20 split • Winner gets ₹16, Platform gets ₹4
+                </p>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-col md:flex-row justify-center items-center gap-4 pt-4">
+              <Button
+                onClick={handleFindMatch}
+                disabled={!selectedGame || !canAffordBet || isSearching}
+                className="px-8 py-4 text-lg font-bold bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed min-w-[200px]"
+              >
+                {isSearching ? (
+                  <>
+                    🔍 Finding Opponent...
+                  </>
+                ) : (
+                  <>
+                    🎯 Find Match (₹{BET_AMOUNT})
+                  </>
+                )}
+              </Button>
+              
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => handleDeposit(50)}
+                  variant="outline"
+                  className="px-4 py-4 text-sm font-semibold bg-white/10 text-white hover:bg-white/20 border-white/30"
+                >
+                  💳 Add ₹50
+                </Button>
+                <Button
+                  onClick={() => handleDeposit(100)}
+                  variant="outline"
+                  className="px-4 py-4 text-sm font-semibold bg-white/10 text-white hover:bg-white/20 border-white/30"
+                >
+                  💳 Add ₹100
+                </Button>
+                <Button
+                  onClick={() => handleDeposit(500)}
+                  variant="outline"
+                  className="px-4 py-4 text-sm font-semibold bg-white/10 text-white hover:bg-white/20 border-white/30"
+                >
+                  💳 Add ₹500
+                </Button>
+              </div>
+            </div>
+
+            {/* Insufficient Balance Warning */}
+            {!canAffordBet && selectedGame && (
+              <div className="text-center p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
+                <p className="text-red-200 font-medium">
+                  ⚠️ Insufficient balance! You need ₹{BET_AMOUNT} but only have {balanceRupees}
+                </p>
+                <p className="text-red-200/80 text-sm mt-1">
+                  Add money to your wallet to start playing real-money games!
+                </p>
+              </div>
+            )}
+
+            {/* Game Rules */}
+            {selectedGame && (
+              <div className="text-center pt-4 border-t border-white/20">
+                <h4 className="text-white font-semibold mb-2">Game Rules</h4>
+                <div className="text-white/70 text-sm space-y-1">
+                  <p>• 60-second matches with real opponents</p>
+                  <p>• Highest score wins the entire pot</p>
+                  <p>• All games are skill-based - no luck involved</p>
+                  <p>• Fair play enforced by anti-cheat system</p>
+                </div>
+              </div>
+            )}
+
+            {/* Platform Stats */}
+            {developerEarnings && (
+              <div className="text-center pt-4 border-t border-white/20">
+                <p className="text-white/60 text-sm">
+                  Total matches played: {developerEarnings.totalMatches} • 
+                  Platform revenue: {formatBalance(developerEarnings.totalEarningsCents)}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}

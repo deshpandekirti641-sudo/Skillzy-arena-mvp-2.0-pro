@@ -1,0 +1,629 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Button } from '../ui/button';
+import { Card, CardContent, CardHeader } from '../ui/card';
+import { Badge } from '../ui/badge';
+import { Progress } from '../ui/progress';
+import { 
+  Crown, Clock, Trophy, Target, Zap, 
+  ArrowLeft, RotateCcw, Flag, Shield
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+interface ProfessionalChessProps {
+  matchId: string;
+  playerName: string;
+  opponentName: string;
+  timeLeft: number;
+  betAmount: number;
+  onGameEnd: (score: number) => void;
+  onQuitGame: () => void;
+}
+
+type PieceType = 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn';
+type PieceColor = 'white' | 'black';
+
+interface ChessPiece {
+  type: PieceType;
+  color: PieceColor;
+}
+
+interface Position {
+  row: number;
+  col: number;
+}
+
+interface Move {
+  from: Position;
+  to: Position;
+  captured?: PieceType;
+  points: number;
+  timestamp: number;
+}
+
+const PIECE_VALUES = {
+  pawn: 100,
+  knight: 300,
+  bishop: 300,
+  rook: 500,
+  queen: 900,
+  king: 0
+};
+
+const PIECE_SYMBOLS = {
+  white: {
+    king: '♔', queen: '♕', rook: '♖', bishop: '♗', knight: '♘', pawn: '♙'
+  },
+  black: {
+    king: '♚', queen: '♛', rook: '♜', bishop: '♝', knight: '♞', pawn: '♟'
+  }
+};
+
+const INITIAL_BOARD = (): (ChessPiece | null)[][] => {
+  const board: (ChessPiece | null)[][] = Array(8).fill(null).map(() => Array(8).fill(null));
+  
+  // Black pieces (top)
+  const backRank: PieceType[] = ['rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook'];
+  for (let col = 0; col < 8; col++) {
+    board[0][col] = { type: backRank[col], color: 'black' };
+    board[1][col] = { type: 'pawn', color: 'black' };
+  }
+  
+  // White pieces (bottom)
+  for (let col = 0; col < 8; col++) {
+    board[6][col] = { type: 'pawn', color: 'white' };
+    board[7][col] = { type: backRank[col], color: 'white' };
+  }
+  
+  return board;
+};
+
+export default function ProfessionalChess({
+  matchId,
+  playerName,
+  opponentName,
+  timeLeft,
+  betAmount,
+  onGameEnd,
+  onQuitGame
+}: ProfessionalChessProps) {
+  const [board, setBoard] = useState<(ChessPiece | null)[][]>(INITIAL_BOARD);
+  const [selectedSquare, setSelectedSquare] = useState<Position | null>(null);
+  const [validMoves, setValidMoves] = useState<Position[]>([]);
+  const [moves, setMoves] = useState<Move[]>([]);
+  const [score, setScore] = useState(0);
+  const [isPlayerTurn, setIsPlayerTurn] = useState(true);
+  const [capturedPieces, setCapturedPieces] = useState<PieceType[]>([]);
+  const [gamePhase, setGamePhase] = useState<'opening' | 'middle' | 'endgame'>('opening');
+  
+  // Audio context for sound effects
+  const audioContextRef = useRef<AudioContext | null>(null);
+  
+  useEffect(() => {
+    // Initialize audio context
+    if (typeof window !== 'undefined') {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    return () => {
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
+  
+  // Game end when time runs out
+  useEffect(() => {
+    if (timeLeft === 0) {
+      const finalScore = calculateFinalScore();
+      onGameEnd(finalScore);
+    }
+  }, [timeLeft]);
+  
+  // Play sound effects
+  const playSound = useCallback((type: 'move' | 'capture' | 'check' | 'castle') => {
+    if (!audioContextRef.current) return;
+    
+    const ctx = audioContextRef.current;
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    switch (type) {
+      case 'move':
+        oscillator.frequency.setValueAtTime(800, ctx.currentTime);
+        break;
+      case 'capture':
+        oscillator.frequency.setValueAtTime(400, ctx.currentTime);
+        oscillator.frequency.setValueAtTime(600, ctx.currentTime + 0.1);
+        break;
+      case 'check':
+        oscillator.frequency.setValueAtTime(1000, ctx.currentTime);
+        oscillator.frequency.setValueAtTime(1200, ctx.currentTime + 0.1);
+        break;
+      case 'castle':
+        oscillator.frequency.setValueAtTime(600, ctx.currentTime);
+        oscillator.frequency.setValueAtTime(800, ctx.currentTime + 0.1);
+        oscillator.frequency.setValueAtTime(1000, ctx.currentTime + 0.2);
+        break;
+    }
+    
+    oscillator.type = 'sine';
+    gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 0.3);
+  }, []);
+  
+  const isValidMove = useCallback((from: Position, to: Position, piece: ChessPiece): boolean => {
+    const dx = Math.abs(to.col - from.col);
+    const dy = Math.abs(to.row - from.row);
+    const targetPiece = board[to.row][to.col];
+    
+    // Can't capture own pieces
+    if (targetPiece && targetPiece.color === piece.color) return false;
+    
+    switch (piece.type) {
+      case 'pawn':
+        const direction = piece.color === 'white' ? -1 : 1;
+        const startRow = piece.color === 'white' ? 6 : 1;
+        
+        // Forward move
+        if (to.col === from.col && !targetPiece) {
+          if (to.row === from.row + direction) return true;
+          if (from.row === startRow && to.row === from.row + 2 * direction) return true;
+        }
+        // Capture
+        if (dx === 1 && to.row === from.row + direction && targetPiece) return true;
+        return false;
+        
+      case 'rook':
+        if (dx === 0 || dy === 0) {
+          return isPathClear(from, to);
+        }
+        return false;
+        
+      case 'bishop':
+        if (dx === dy) {
+          return isPathClear(from, to);
+        }
+        return false;
+        
+      case 'queen':
+        if (dx === 0 || dy === 0 || dx === dy) {
+          return isPathClear(from, to);
+        }
+        return false;
+        
+      case 'knight':
+        return (dx === 2 && dy === 1) || (dx === 1 && dy === 2);
+        
+      case 'king':
+        return dx <= 1 && dy <= 1;
+        
+      default:
+        return false;
+    }
+  }, [board]);
+  
+  const isPathClear = useCallback((from: Position, to: Position): boolean => {
+    const dx = to.col - from.col;
+    const dy = to.row - from.row;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy));
+    
+    const stepX = dx === 0 ? 0 : dx / Math.abs(dx);
+    const stepY = dy === 0 ? 0 : dy / Math.abs(dy);
+    
+    for (let i = 1; i < steps; i++) {
+      const checkRow = from.row + i * stepY;
+      const checkCol = from.col + i * stepX;
+      if (board[checkRow][checkCol]) return false;
+    }
+    
+    return true;
+  }, [board]);
+  
+  const getValidMoves = useCallback((pos: Position, piece: ChessPiece): Position[] => {
+    const moves: Position[] = [];
+    
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const to = { row, col };
+        if (isValidMove(pos, to, piece)) {
+          moves.push(to);
+        }
+      }
+    }
+    
+    return moves;
+  }, [isValidMove]);
+  
+  const handleSquareClick = useCallback((row: number, col: number) => {
+    if (!isPlayerTurn) return;
+    
+    const clickedPos = { row, col };
+    const piece = board[row][col];
+    
+    if (selectedSquare) {
+      // Try to make a move
+      const selectedPiece = board[selectedSquare.row][selectedSquare.col];
+      if (selectedPiece && isValidMove(selectedSquare, clickedPos, selectedPiece)) {
+        makeMove(selectedSquare, clickedPos);
+      }
+      setSelectedSquare(null);
+      setValidMoves([]);
+    } else if (piece && piece.color === 'white') {
+      // Select piece
+      setSelectedSquare(clickedPos);
+      setValidMoves(getValidMoves(clickedPos, piece));
+    }
+  }, [board, selectedSquare, isPlayerTurn, isValidMove, getValidMoves]);
+  
+  const makeMove = useCallback((from: Position, to: Position) => {
+    const newBoard = board.map(row => [...row]);
+    const movingPiece = newBoard[from.row][from.col];
+    const capturedPiece = newBoard[to.row][to.col];
+    
+    if (!movingPiece) return;
+    
+    // Execute move
+    newBoard[to.row][to.col] = movingPiece;
+    newBoard[from.row][from.col] = null;
+    
+    // Calculate points
+    let movePoints = 10; // Base move points
+    
+    if (capturedPiece) {
+      const capturePoints = PIECE_VALUES[capturedPiece.type];
+      movePoints += capturePoints;
+      setCapturedPieces(prev => [...prev, capturedPiece.type]);
+      playSound('capture');
+      toast.success(`Captured ${capturedPiece.type}! +${capturePoints}pts`);
+    } else {
+      playSound('move');
+    }
+    
+    // Positional bonuses
+    if (to.row >= 3 && to.row <= 4 && to.col >= 2 && to.col <= 5) {
+      movePoints += 15; // Center control
+    }
+    
+    if (movingPiece.type === 'pawn' && 
+        ((movingPiece.color === 'white' && to.row <= 3) || 
+         (movingPiece.color === 'black' && to.row >= 4))) {
+      movePoints += 10; // Pawn advancement
+    }
+    
+    // Record move
+    const move: Move = {
+      from,
+      to,
+      captured: capturedPiece?.type,
+      points: movePoints,
+      timestamp: Date.now()
+    };
+    
+    setMoves(prev => [...prev, move]);
+    setScore(prev => prev + movePoints);
+    setBoard(newBoard);
+    
+    // Update game phase
+    const totalPieces = newBoard.flat().filter(Boolean).length;
+    if (totalPieces <= 12) {
+      setGamePhase('endgame');
+    } else if (moves.length >= 20) {
+      setGamePhase('middle');
+    }
+    
+    // Switch turns
+    setIsPlayerTurn(false);
+    setTimeout(() => {
+      makeOpponentMove(newBoard);
+    }, 1000 + Math.random() * 2000); // Realistic thinking time
+  }, [board, moves.length, playSound]);
+  
+  const makeOpponentMove = useCallback((currentBoard: (ChessPiece | null)[][]) => {
+    const blackPieces: { pos: Position; piece: ChessPiece }[] = [];
+    
+    // Find all black pieces
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const piece = currentBoard[row][col];
+        if (piece && piece.color === 'black') {
+          blackPieces.push({ pos: { row, col }, piece });
+        }
+      }
+    }
+    
+    if (blackPieces.length === 0) return;
+    
+    // AI logic: prioritize captures, then center control
+    let bestMove: { from: Position; to: Position; score: number } | null = null;
+    
+    for (const { pos, piece } of blackPieces) {
+      const validMoves = getValidMoves(pos, piece);
+      
+      for (const to of validMoves) {
+        const targetPiece = currentBoard[to.row][to.col];
+        let moveScore = Math.random() * 10; // Base randomness
+        
+        // Prioritize captures
+        if (targetPiece) {
+          moveScore += PIECE_VALUES[targetPiece.type] / 10;
+        }
+        
+        // Prefer center control
+        if (to.row >= 3 && to.row <= 4 && to.col >= 2 && to.col <= 5) {
+          moveScore += 15;
+        }
+        
+        // Avoid edge positions (except for rooks)
+        if (piece.type !== 'rook' && (to.row === 0 || to.row === 7 || to.col === 0 || to.col === 7)) {
+          moveScore -= 10;
+        }
+        
+        if (!bestMove || moveScore > bestMove.score) {
+          bestMove = { from: pos, to, score: moveScore };
+        }
+      }
+    }
+    
+    if (bestMove) {
+      const newBoard = currentBoard.map(row => [...row]);
+      const movingPiece = newBoard[bestMove.from.row][bestMove.from.col];
+      const capturedPiece = newBoard[bestMove.to.row][bestMove.to.col];
+      
+      newBoard[bestMove.to.row][bestMove.to.col] = movingPiece;
+      newBoard[bestMove.from.row][bestMove.from.col] = null;
+      
+      setBoard(newBoard);
+      
+      if (capturedPiece) {
+        playSound('capture');
+      } else {
+        playSound('move');
+      }
+    }
+    
+    setIsPlayerTurn(true);
+  }, [getValidMoves, playSound]);
+  
+  const calculateFinalScore = useCallback((): number => {
+    let finalScore = score;
+    
+    // Bonus for pieces remaining
+    let whitePiecesValue = 0;
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const piece = board[row][col];
+        if (piece && piece.color === 'white' && piece.type !== 'king') {
+          whitePiecesValue += PIECE_VALUES[piece.type];
+        }
+      }
+    }
+    
+    finalScore += whitePiecesValue / 10; // 10% of piece values
+    finalScore += moves.length * 5; // Activity bonus
+    finalScore += capturedPieces.length * 25; // Capture bonus
+    
+    // Game phase bonus
+    switch (gamePhase) {
+      case 'opening':
+        finalScore += 50;
+        break;
+      case 'middle':
+        finalScore += 100;
+        break;
+      case 'endgame':
+        finalScore += 150;
+        break;
+    }
+    
+    return Math.max(0, Math.round(finalScore));
+  }, [score, board, moves.length, capturedPieces.length, gamePhase]);
+  
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+  
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-amber-900 via-amber-800 to-yellow-800 p-4 pt-12">
+      {/* Header */}
+      <div className="max-w-2xl mx-auto mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <Button 
+            variant="ghost" 
+            onClick={onQuitGame}
+            className="text-white hover:bg-white/10"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Quit
+          </Button>
+          
+          <div className="text-center">
+            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              <Crown className="w-5 h-5 text-yellow-400" />
+              Chess Master
+            </h1>
+            <p className="text-amber-200 text-sm">₹{betAmount} Match</p>
+          </div>
+          
+          <div className="text-right text-white">
+            <p className="text-sm text-amber-200">Time Left</p>
+            <p className="font-bold text-lg">{formatTime(timeLeft)}</p>
+          </div>
+        </div>
+        
+        {/* Players */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <Card className="bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">
+                    {playerName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium text-sm">{playerName}</p>
+                  <div className="flex items-center gap-2">
+                    <Badge className={`text-xs ${isPlayerTurn ? 'bg-green-500' : 'bg-gray-500'}`}>
+                      {isPlayerTurn ? 'Your Turn' : 'Waiting'}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-yellow-400 font-bold">{score}</p>
+                  <p className="text-white/60 text-xs">Score</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">
+                    {opponentName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium text-sm">{opponentName}</p>
+                  <div className="flex items-center gap-2">
+                    <Badge className={`text-xs ${!isPlayerTurn ? 'bg-red-500' : 'bg-gray-500'}`}>
+                      {!isPlayerTurn ? 'Thinking...' : 'Waiting'}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-blue-400 font-bold">~{Math.max(0, score - 50)}</p>
+                  <p className="text-white/60 text-xs">Score</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Game Stats */}
+        <div className="grid grid-cols-4 gap-2 mb-4">
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-yellow-400 font-bold">{moves.length}</p>
+            <p className="text-white/60 text-xs">Moves</p>
+          </div>
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-green-400 font-bold">{capturedPieces.length}</p>
+            <p className="text-white/60 text-xs">Captures</p>
+          </div>
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-blue-400 font-bold">{gamePhase}</p>
+            <p className="text-white/60 text-xs">Phase</p>
+          </div>
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-purple-400 font-bold">White</p>
+            <p className="text-white/60 text-xs">Color</p>
+          </div>
+        </div>
+      </div>
+      
+      {/* Chess Board */}
+      <div className="max-w-lg mx-auto">
+        <div className="bg-amber-900 p-3 rounded-lg shadow-2xl">
+          <div className="grid grid-cols-8 gap-1">
+            {Array.from({ length: 8 }, (_, row) =>
+              Array.from({ length: 8 }, (_, col) => {
+                const piece = board[row][col];
+                const isLight = (row + col) % 2 === 0;
+                const isSelected = selectedSquare?.row === row && selectedSquare?.col === col;
+                const isValidMove = validMoves.some(m => m.row === row && m.col === col);
+                const isLastMove = moves.length > 0 && 
+                  (moves[moves.length - 1].to.row === row && moves[moves.length - 1].to.col === col);
+                
+                return (
+                  <div
+                    key={`${row}-${col}`}
+                    className={`
+                      aspect-square flex items-center justify-center text-2xl cursor-pointer
+                      transition-all duration-200 hover:scale-105 relative
+                      ${isLight ? 'bg-amber-100' : 'bg-amber-600'}
+                      ${isSelected ? 'ring-3 ring-yellow-400 bg-yellow-200 animate-pulse' : ''}
+                      ${isValidMove ? 'ring-2 ring-green-400' : ''}
+                      ${isLastMove ? 'ring-2 ring-blue-400' : ''}
+                      ${!isPlayerTurn && piece?.color === 'white' ? 'opacity-60' : ''}
+                    `}
+                    onClick={() => handleSquareClick(row, col)}
+                  >
+                    {piece && (
+                      <span className="drop-shadow-lg select-none">
+                        {PIECE_SYMBOLS[piece.color][piece.type]}
+                      </span>
+                    )}
+                    
+                    {isValidMove && !piece && (
+                      <div className="w-3 h-3 bg-green-500 rounded-full opacity-70 animate-pulse"></div>
+                    )}
+                    
+                    {isValidMove && piece && (
+                      <div className="absolute inset-0 bg-red-500 opacity-30 rounded animate-pulse"></div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+        
+        {/* Turn Indicator */}
+        <div className="text-center mt-4">
+          <Badge className={`text-lg px-4 py-2 ${
+            isPlayerTurn ? 'bg-green-500 animate-pulse' : 'bg-orange-500'
+          }`}>
+            {isPlayerTurn ? '🤔 Your Turn' : '⏳ Opponent Thinking...'}
+          </Badge>
+        </div>
+        
+        {/* Captured Pieces */}
+        {capturedPieces.length > 0 && (
+          <div className="text-center mt-4 bg-black/20 p-3 rounded-lg">
+            <p className="text-amber-200 text-sm mb-2">Captured Pieces:</p>
+            <div className="flex justify-center gap-1 flex-wrap">
+              {capturedPieces.map((pieceType, index) => (
+                <span key={index} className="text-xl">
+                  {PIECE_SYMBOLS.black[pieceType]}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Game Controls */}
+        <div className="mt-4 text-center space-y-2">
+          <div className="text-white/80 text-sm space-y-1">
+            <p>🎯 <strong>Tap piece → Tap destination</strong></p>
+            <p>💎 <strong>Captures:</strong> Pawn=100, Knight/Bishop=300, Rook=500, Queen=900</p>
+            <p>⚡ <strong>Bonuses:</strong> Center=15pts, Activity=5pts/move</p>
+          </div>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const finalScore = calculateFinalScore();
+              onGameEnd(finalScore);
+            }}
+            className="bg-red-500/20 border-red-400 text-red-300 hover:bg-red-500/30"
+          >
+            <Flag className="w-4 h-4 mr-1" />
+            Submit Score ({calculateFinalScore()})
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

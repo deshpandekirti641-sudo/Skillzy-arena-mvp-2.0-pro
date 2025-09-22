@@ -1,0 +1,181 @@
+'use client'
+
+import React, { useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
+import { useDeveloperAuth } from '@/hooks/useDeveloperAuth'
+
+export const DeveloperAuthScreen: React.FC = () => {
+  const [credentials, setCredentials] = useState({
+    developerId: '',
+    secretKey: '',
+    twoFactorCode: ''
+  })
+  
+  const [step, setStep] = useState<'credentials' | '2fa'>('credentials')
+  const [isLoading, setIsLoading] = useState(false)
+  const { authenticate } = useDeveloperAuth()
+
+  const handleCredentialsSubmit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
+    
+    if (!credentials.developerId || !credentials.secretKey) {
+      toast.error('Please enter both Developer ID and Secret Key')
+      return
+    }
+
+    setIsLoading(true)
+    
+    try {
+      // In real implementation, this would verify credentials with backend
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      if (credentials.developerId === 'SKILLZY_DEV_001' && credentials.secretKey === 'SKZ_SECRET_2024_ADMIN') {
+        setStep('2fa')
+        toast.success('Credentials verified! Enter 2FA code.')
+      } else {
+        toast.error('Invalid developer credentials')
+      }
+    } catch (error) {
+      toast.error('Authentication failed')
+    }
+    
+    setIsLoading(false)
+  }
+
+  const handle2FASubmit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
+    
+    if (!credentials.twoFactorCode || credentials.twoFactorCode.length !== 6) {
+      toast.error('Please enter valid 6-digit 2FA code')
+      return
+    }
+
+    setIsLoading(true)
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Simulate 2FA verification (in real app, verify with authenticator)
+      if (credentials.twoFactorCode === '123456' || credentials.twoFactorCode === '000000') {
+        await authenticate(credentials.developerId)
+        toast.success('🎉 Welcome to Skillzy Arena Developer Dashboard!')
+      } else {
+        toast.error('Invalid 2FA code')
+      }
+    } catch (error) {
+      toast.error('2FA verification failed')
+    }
+    
+    setIsLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <Card className="w-full max-w-md bg-black/20 backdrop-blur-md border-white/10">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 text-6xl">🛡️</div>
+          <CardTitle className="text-2xl text-white font-bold">
+            Developer Access
+          </CardTitle>
+          <CardDescription className="text-gray-300">
+            Skillzy Arena Admin Panel
+          </CardDescription>
+          <Badge variant="outline" className="mx-auto border-yellow-500/50 text-yellow-300">
+            🔐 Secure Developer Portal
+          </Badge>
+        </CardHeader>
+        
+        <CardContent className="space-y-6">
+          {step === 'credentials' ? (
+            <form onSubmit={handleCredentialsSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="developerId" className="text-white">Developer ID</Label>
+                <Input
+                  id="developerId"
+                  type="text"
+                  placeholder="SKILLZY_DEV_001"
+                  value={credentials.developerId}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
+                    setCredentials(prev => ({ ...prev, developerId: e.target.value }))
+                  }
+                  className="bg-white/10 border-white/20 text-white placeholder-gray-400"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="secretKey" className="text-white">Secret Key</Label>
+                <Input
+                  id="secretKey"
+                  type="password"
+                  placeholder="Enter your secret key"
+                  value={credentials.secretKey}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
+                    setCredentials(prev => ({ ...prev, secretKey: e.target.value }))
+                  }
+                  className="bg-white/10 border-white/20 text-white placeholder-gray-400"
+                />
+              </div>
+              
+              <Button 
+                type="submit" 
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+              >
+                {isLoading ? '🔐 Verifying...' : '🚀 Access Dashboard'}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handle2FASubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="twoFactorCode" className="text-white">2FA Authentication Code</Label>
+                <Input
+                  id="twoFactorCode"
+                  type="text"
+                  placeholder="Enter 6-digit code"
+                  maxLength={6}
+                  value={credentials.twoFactorCode}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
+                    setCredentials(prev => ({ ...prev, twoFactorCode: e.target.value }))
+                  }
+                  className="bg-white/10 border-white/20 text-white placeholder-gray-400 text-center text-xl tracking-widest"
+                />
+              </div>
+              
+              <div className="text-center text-sm text-gray-400">
+                📱 Check your authenticator app for the 6-digit code
+              </div>
+              
+              <Button 
+                type="submit" 
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
+              >
+                {isLoading ? '⏳ Verifying 2FA...' : '✅ Complete Login'}
+              </Button>
+              
+              <Button 
+                type="button"
+                variant="outline"
+                onClick={() => setStep('credentials')}
+                className="w-full border-white/20 text-white hover:bg-white/10"
+              >
+                ← Back to Credentials
+              </Button>
+            </form>
+          )}
+          
+          <div className="pt-4 border-t border-white/10 text-center text-xs text-gray-400">
+            🛡️ Demo Credentials: SKILLZY_DEV_001 / SKZ_SECRET_2024_ADMIN
+            <br />
+            📱 Demo 2FA Code: 123456
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

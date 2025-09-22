@@ -1,0 +1,667 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Progress } from './ui/progress';
+import { Badge } from './ui/badge';
+import { toast } from 'sonner';
+import type { MatchSession, PlayerProfile } from '../spacetime_module_bindings/betting_types';
+import OptimizedTempleRun3D from './games/OptimizedTempleRun3D';
+import OptimizedTrafficRace3D from './games/OptimizedTrafficRace3D';
+import { Clock, Trophy, Zap, Users, Target } from 'lucide-react';
+
+interface RealMatchArenaProps {
+  match: MatchSession;
+  playerProfile: PlayerProfile;
+  onSubmitResult: (myScore: number, opponentScore: number) => void;
+  onBackToHub: () => void;
+}
+
+type GameState = 'countdown' | 'playing' | 'finished';
+
+export function RealMatchArena({ match, playerProfile, onSubmitResult, onBackToHub }: RealMatchArenaProps) {
+  // Full-screen 3D games
+  if (match.gameType.tag === 'TempleRun') {
+    return (
+      <div className="fixed inset-0 z-50">
+        <OptimizedTempleRun3D 
+          onGameEnd={(score, reason) => {
+            console.log('Temple Run ended:', { score, reason });
+            onSubmitResult(score, 0);
+          }}
+          timeLeft={60}
+          isGameActive={true}
+        />
+      </div>
+    );
+  }
+
+  if (match.gameType.tag === 'TrafficRace') {
+    return (
+      <div className="fixed inset-0 z-50">
+        <OptimizedTrafficRace3D 
+          onGameEnd={(score, reason) => {
+            console.log('Traffic Race ended:', { score, reason });
+            onSubmitResult(score, 0);
+          }}
+          timeLeft={60}
+          isGameActive={true}
+        />
+      </div>
+    );
+  }
+
+  // Regular 2D games
+  const [gameState, setGameState] = useState<GameState>('countdown');
+  const [countdown, setCountdown] = useState(3);
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(60); // 60 seconds for all games
+  const [gameData, setGameData] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const gameRef = useRef<HTMLDivElement>(null);
+  const isPlayer1 = match.player1Identity.toHexString() === playerProfile.identity.toHexString();
+  const betAmount = Number(match.betAmountCents) / 100;
+  const totalPot = betAmount * 2;
+  const winnerAmount = totalPot * 0.8; // 80% to winner
+  
+  // Get opponent info
+  const opponentIdentity = isPlayer1 ? match.player2Identity : match.player1Identity;
+  const hasOpponent = match.player2Identity !== null;
+  
+  // Game type info
+  const gameInfo = {
+    ReactionTime: { 
+      title: '⚡ Reaction Time Challenge',
+      description: 'Click the red targets as fast as possible!',
+      instructions: 'Click on targets before they disappear'
+    },
+    MemoryPatterns: { 
+      title: '🧠 Memory Patterns',
+      description: 'Remember and repeat the color sequence!',
+      instructions: 'Watch the sequence, then repeat it exactly'
+    },
+    NumberRush: { 
+      title: '🔢 Number Rush',
+      description: 'Solve math problems as quickly as possible!',
+      instructions: 'Type the answer and press Enter'
+    },
+    SpeedTyping: { 
+      title: '⌨️ Speed Typing',
+      description: 'Type the words faster than your opponent!',
+      instructions: 'Type each word exactly as shown'
+    },
+  }[match.gameType.tag] || { title: 'Game', description: 'Play to win!', instructions: 'Good luck!' };
+
+  // Countdown effect
+  useEffect(() => {
+    if (gameState === 'countdown' && countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    } else if (gameState === 'countdown' && countdown === 0) {
+      setGameState('playing');
+      initializeGame();
+    }
+  }, [gameState, countdown]);
+
+  // Game timer effect
+  useEffect(() => {
+    if (gameState === 'playing' && timeLeft > 0) {
+      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+      return () => clearTimeout(timer);
+    } else if (gameState === 'playing' && timeLeft === 0) {
+      setGameState('finished');
+      toast.info('⏰ Time\'s up! Calculating results...');
+    }
+  }, [gameState, timeLeft]);
+
+  const initializeGame = () => {
+    switch (match.gameType.tag) {
+      case 'ReactionTime':
+        initReactionTimeGame();
+        break;
+      case 'MemoryPatterns':
+        initMemoryPatternsGame();
+        break;
+      case 'NumberRush':
+        initNumberRushGame();
+        break;
+      case 'SpeedTyping':
+        initSpeedTypingGame();
+        break;
+    }
+  };
+
+  const initReactionTimeGame = () => {
+    setGameData({
+      targets: [],
+      activeTarget: null,
+      clicks: 0,
+      misses: 0,
+    });
+    spawnTarget();
+  };
+
+  const initMemoryPatternsGame = () => {
+    const colors = ['red', 'blue', 'green', 'yellow'];
+    const sequence = Array.from({ length: 4 }, () => colors[Math.floor(Math.random() * colors.length)]);
+    setGameData({
+      sequence,
+      playerSequence: [],
+      showingSequence: true,
+      sequenceIndex: 0,
+      level: 1,
+    });
+    showSequence(sequence);
+  };
+
+  const initNumberRushGame = () => {
+    setGameData({
+      currentProblem: generateMathProblem(1),
+      answer: '',
+      correctAnswers: 0,
+      wrongAnswers: 0,
+      level: 1,
+    });
+  };
+
+  const initSpeedTypingGame = () => {
+    const words = ['javascript', 'react', 'typescript', 'nextjs', 'skillzy', 'arena', 'coding', 'fast', 'speed', 'gaming'];
+    setGameData({
+      words: words.sort(() => Math.random() - 0.5),
+      currentWord: 0,
+      typed: '',
+      correctWords: 0,
+      errors: 0,
+    });
+  };
+
+  const spawnTarget = () => {
+    if (gameState !== 'playing') return;
+    
+    const target = {
+      id: Date.now(),
+      x: Math.random() * 80 + 10,
+      y: Math.random() * 60 + 20,
+      size: Math.random() * 30 + 40, // Variable sizes for difficulty
+    };
+    
+    setGameData((prev: any) => ({
+      ...prev,
+      activeTarget: target,
+    }));
+
+    // Auto-remove target after 1.2 seconds (faster pace)
+    setTimeout(() => {
+      setGameData((prev: any) => {
+        if (prev?.activeTarget?.id === target.id) {
+          return {
+            ...prev,
+            activeTarget: null,
+            misses: prev.misses + 1,
+          };
+        }
+        return prev;
+      });
+      
+      if (gameState === 'playing') {
+        setTimeout(spawnTarget, Math.random() * 600 + 300); // Faster spawning
+      }
+    }, 1200);
+  };
+
+  const handleTargetClick = () => {
+    if (gameData?.activeTarget) {
+      const baseScore = 100;
+      const sizeBonus = Math.floor((50 - gameData.activeTarget.size) * 2); // Smaller targets = more points
+      const newScore = score + baseScore + Math.max(0, sizeBonus);
+      setScore(newScore);
+      
+      setGameData((prev: any) => ({
+        ...prev,
+        clicks: prev.clicks + 1,
+        activeTarget: null,
+      }));
+      
+      setTimeout(spawnTarget, Math.random() * 400 + 200);
+    }
+  };
+
+  const showSequence = async (sequence: string[]) => {
+    for (let i = 0; i < sequence.length; i++) {
+      await new Promise(resolve => setTimeout(resolve, 800));
+      setGameData((prev: any) => ({ ...prev, sequenceIndex: i }));
+    }
+    await new Promise(resolve => setTimeout(resolve, 600));
+    setGameData((prev: any) => ({ ...prev, showingSequence: false, sequenceIndex: -1 }));
+  };
+
+  const handleColorClick = (color: string) => {
+    if (gameData?.showingSequence) return;
+    
+    const newSequence = [...gameData.playerSequence, color];
+    const isCorrect = newSequence[newSequence.length - 1] === gameData.sequence[newSequence.length - 1];
+    
+    if (isCorrect) {
+      setGameData((prev: any) => ({ ...prev, playerSequence: newSequence }));
+      
+      if (newSequence.length === gameData.sequence.length) {
+        // Sequence completed successfully
+        const levelBonus = gameData.level * 500;
+        const newScore = score + 1000 + levelBonus;
+        setScore(newScore);
+        
+        // Generate new, longer sequence
+        const colors = ['red', 'blue', 'green', 'yellow'];
+        const nextLevel = gameData.level + 1;
+        const sequenceLength = Math.min(8, 3 + nextLevel);
+        const newSequenceData = Array.from({ length: sequenceLength }, 
+          () => colors[Math.floor(Math.random() * colors.length)]);
+          
+        setGameData((prev: any) => ({
+          ...prev,
+          sequence: newSequenceData,
+          playerSequence: [],
+          showingSequence: true,
+          sequenceIndex: 0,
+          level: nextLevel,
+        }));
+        
+        showSequence(newSequenceData);
+        toast.success(`🎉 Level ${nextLevel} completed!`);
+      }
+    } else {
+      // Wrong - reset sequence
+      setGameData((prev: any) => ({ ...prev, playerSequence: [] }));
+      toast.error('❌ Wrong sequence! Try again.');
+    }
+  };
+
+  const generateMathProblem = (level: number) => {
+    const operations = ['+', '-', '×'];
+    const op = operations[Math.floor(Math.random() * operations.length)];
+    let a, b, answer;
+    
+    const difficulty = Math.min(level, 5);
+    
+    switch (op) {
+      case '+':
+        a = Math.floor(Math.random() * (20 * difficulty)) + 1;
+        b = Math.floor(Math.random() * (20 * difficulty)) + 1;
+        answer = a + b;
+        break;
+      case '-':
+        a = Math.floor(Math.random() * (30 * difficulty)) + 20;
+        b = Math.floor(Math.random() * (15 * difficulty)) + 1;
+        answer = a - b;
+        break;
+      case '×':
+        a = Math.floor(Math.random() * (8 + difficulty)) + 1;
+        b = Math.floor(Math.random() * (8 + difficulty)) + 1;
+        answer = a * b;
+        break;
+      default:
+        a = 1; b = 1; answer = 2;
+    }
+    
+    return { question: `${a} ${op} ${b}`, answer, level };
+  };
+
+  const handleMathSubmit = (inputAnswer: string) => {
+    const numAnswer = parseInt(inputAnswer);
+    if (numAnswer === gameData?.currentProblem.answer) {
+      const levelBonus = gameData.level * 25;
+      const newScore = score + 100 + levelBonus;
+      setScore(newScore);
+      
+      const correctAnswers = gameData.correctAnswers + 1;
+      const nextLevel = Math.floor(correctAnswers / 5) + 1;
+      
+      setGameData((prev: any) => ({
+        ...prev,
+        currentProblem: generateMathProblem(nextLevel),
+        answer: '',
+        correctAnswers,
+        level: nextLevel,
+      }));
+      
+      if (nextLevel > gameData.level) {
+        toast.success(`🔥 Level ${nextLevel}! Harder problems ahead!`);
+      }
+    } else {
+      setGameData((prev: any) => ({ 
+        ...prev, 
+        answer: '',
+        wrongAnswers: prev.wrongAnswers + 1,
+      }));
+      toast.error('❌ Wrong answer! Try again.');
+    }
+  };
+
+  const handleTypingInput = (value: string) => {
+    const currentWord = gameData?.words[gameData?.currentWord];
+    
+    if (value === currentWord) {
+      // Word completed successfully
+      const wordBonus = currentWord.length * 10;
+      const speedBonus = Math.max(0, (60 - (60 - timeLeft)) * 5); // Bonus for speed
+      const newScore = score + wordBonus + speedBonus;
+      setScore(newScore);
+      
+      const nextWord = gameData.currentWord + 1;
+      if (nextWord < gameData.words.length) {
+        setGameData((prev: any) => ({
+          ...prev,
+          currentWord: nextWord,
+          typed: '',
+          correctWords: prev.correctWords + 1,
+        }));
+      } else {
+        // Reshuffle words for infinite play
+        const words = ['javascript', 'react', 'typescript', 'nextjs', 'skillzy', 'arena', 'coding', 'fast', 'speed', 'gaming', 'winner', 'champion'];
+        setGameData((prev: any) => ({
+          ...prev,
+          words: words.sort(() => Math.random() - 0.5),
+          currentWord: 0,
+          typed: '',
+          correctWords: prev.correctWords + 1,
+        }));
+      }
+    } else if (!currentWord.startsWith(value) && value.length > 0) {
+      // Track errors for scoring penalty
+      setGameData((prev: any) => ({ 
+        ...prev, 
+        typed: value,
+        errors: prev.errors + 1,
+      }));
+    } else {
+      setGameData((prev: any) => ({ ...prev, typed: value }));
+    }
+  };
+
+  const handleSubmitResult = async () => {
+    if (isSubmitting) return;
+    
+    setIsSubmitting(true);
+    
+    try {
+      // For real matches, we don't generate opponent scores
+      // The server handles scoring based on actual results
+      await onSubmitResult(score, 0);
+      toast.success('🏆 Result submitted successfully!');
+    } catch (error) {
+      console.error('Submit result error:', error);
+      toast.error('Failed to submit result. Please try again.');
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderGame = () => {
+    if (gameState === 'countdown') {
+      return (
+        <div className="text-center py-20">
+          <div className="text-8xl font-bold text-yellow-400 mb-4 animate-pulse">
+            {countdown > 0 ? countdown : 'GO!'}
+          </div>
+          <p className="text-xl text-white/80">Get ready to compete!</p>
+          <p className="text-sm text-white/60 mt-2">{gameInfo.instructions}</p>
+        </div>
+      );
+    }
+
+    if (gameState === 'finished') {
+      return (
+        <div className="text-center py-12">
+          <div className="text-6xl font-bold text-white mb-4">{score.toLocaleString()}</div>
+          <p className="text-xl text-white/80 mb-2">Final Score</p>
+          <Badge className="mb-6 bg-blue-500 text-white font-semibold">
+            Competing for ₹{winnerAmount.toFixed(0)} prize
+          </Badge>
+          
+          <Button 
+            onClick={handleSubmitResult}
+            disabled={isSubmitting}
+            className="px-8 py-4 text-lg font-bold bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <>🔄 Submitting...</>
+            ) : (
+              <>🏆 Submit Result</>
+            )}
+          </Button>
+          
+          <p className="text-white/60 text-sm mt-4">
+            Results are automatically verified for fair play
+          </p>
+        </div>
+      );
+    }
+
+    // Game-specific rendering
+    switch (match.gameType.tag) {
+      case 'ReactionTime':
+        return (
+          <div className="relative h-96 bg-black/20 rounded-lg overflow-hidden border border-white/20">
+            {gameData?.activeTarget && (
+              <div
+                className="absolute bg-red-500 rounded-full cursor-pointer animate-pulse shadow-lg hover:shadow-red-500/50 transition-all"
+                style={{
+                  left: `${gameData.activeTarget.x}%`,
+                  top: `${gameData.activeTarget.y}%`,
+                  width: `${gameData.activeTarget.size}px`,
+                  height: `${gameData.activeTarget.size}px`,
+                }}
+                onClick={handleTargetClick}
+              />
+            )}
+            <div className="absolute bottom-4 left-4 text-white bg-black/50 px-3 py-1 rounded">
+              <div>Hits: {gameData?.clicks || 0}</div>
+              <div>Misses: {gameData?.misses || 0}</div>
+            </div>
+            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 text-white/60 text-sm">
+              Click the red targets!
+            </div>
+          </div>
+        );
+
+      case 'MemoryPatterns':
+        const colors = ['red', 'blue', 'green', 'yellow'];
+        return (
+          <div className="text-center">
+            <div className="mb-4">
+              <Badge className="bg-purple-500 text-white">
+                Level {gameData?.level || 1} • {gameData?.sequence?.length || 0} colors
+              </Badge>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto mb-4">
+              {colors.map((color, index) => (
+                <div
+                  key={color}
+                  className={`w-20 h-20 rounded-lg cursor-pointer transition-all transform hover:scale-105 ${ 
+                    gameData?.sequenceIndex === gameData?.sequence.findIndex((c: string, i: number) => 
+                      c === color && i === gameData?.sequenceIndex
+                    ) && gameData?.showingSequence ? 'ring-4 ring-white scale-110' : ''
+                  }`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => handleColorClick(color)}
+                />
+              ))}
+            </div>
+            
+            <p className="text-white/80 mb-2">
+              {gameData?.showingSequence ? 'Watch the sequence...' : 'Repeat the sequence!'}
+            </p>
+            <p className="text-white/60 text-sm">
+              Progress: {gameData?.playerSequence?.length || 0}/{gameData?.sequence?.length || 0}
+            </p>
+          </div>
+        );
+
+      case 'NumberRush':
+        return (
+          <div className="text-center">
+            <div className="mb-4">
+              <Badge className="bg-blue-500 text-white">
+                Level {gameData?.level || 1} • Correct: {gameData?.correctAnswers || 0}
+              </Badge>
+            </div>
+            
+            <div className="text-4xl font-bold text-white mb-6">
+              {gameData?.currentProblem?.question} = ?
+            </div>
+            
+            <input
+              type="number"
+              value={gameData?.answer || ''}
+              onChange={(e) => setGameData((prev: any) => ({ ...prev, answer: e.target.value }))}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && gameData?.answer) {
+                  handleMathSubmit(gameData.answer);
+                }
+              }}
+              className="text-2xl p-3 rounded-lg text-center bg-white/10 text-white w-32 border border-white/20 focus:border-blue-400 focus:outline-none"
+              placeholder="?"
+              autoFocus
+            />
+            
+            <div className="mt-4 text-white/80 space-x-4">
+              <span>Correct: {gameData?.correctAnswers || 0}</span>
+              <span>Wrong: {gameData?.wrongAnswers || 0}</span>
+            </div>
+          </div>
+        );
+
+      case 'SpeedTyping':
+        const currentWord = gameData?.words?.[gameData?.currentWord];
+        const typed = gameData?.typed || '';
+        
+        return (
+          <div className="text-center">
+            <div className="mb-4">
+              <Badge className="bg-green-500 text-white">
+                Words: {gameData?.correctWords || 0} • Errors: {gameData?.errors || 0}
+              </Badge>
+            </div>
+            
+            <div className="text-4xl font-bold text-white mb-6 font-mono">
+              {currentWord?.split('').map((char: string, index: number) => (
+                <span
+                  key={index}
+                  className={
+                    index < typed.length
+                      ? typed[index] === char
+                        ? 'text-green-400'
+                        : 'text-red-400 bg-red-400/20'
+                      : 'text-white/60'
+                  }
+                >
+                  {char}
+                </span>
+              ))}
+            </div>
+            
+            <input
+              type="text"
+              value={typed}
+              onChange={(e) => handleTypingInput(e.target.value)}
+              className="text-2xl p-3 rounded-lg text-center bg-white/10 text-white border border-white/20 focus:border-green-400 focus:outline-none font-mono"
+              placeholder="Type here..."
+              autoFocus
+            />
+            
+            <div className="mt-4 text-white/80">
+              <div>Progress: {gameData?.correctWords || 0} words completed</div>
+              <div className="text-sm text-white/60 mt-1">Type exactly as shown above</div>
+            </div>
+          </div>
+        );
+
+      default:
+        return <div className="text-white">Game not implemented</div>;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white mb-6">
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="text-2xl flex items-center gap-2">
+                  <Trophy className="w-6 h-6 text-yellow-400" />
+                  {gameInfo.title}
+                </CardTitle>
+                <p className="text-white/80">{gameInfo.description}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-yellow-400">₹{betAmount.toFixed(0)} bet</p>
+                <p className="text-sm text-white/80">Winner gets ₹{winnerAmount.toFixed(0)}</p>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* Game Stats */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white">
+            <CardContent className="p-4 text-center">
+              <Target className="w-6 h-6 mx-auto mb-2 text-yellow-400" />
+              <p className="text-sm opacity-80">Your Score</p>
+              <p className="text-2xl font-bold text-yellow-400">{score.toLocaleString()}</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white">
+            <CardContent className="p-4 text-center">
+              <Clock className="w-6 h-6 mx-auto mb-2 text-blue-400" />
+              <p className="text-sm opacity-80">Time Left</p>
+              <p className="text-2xl font-bold">{timeLeft}s</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white">
+            <CardContent className="p-4 text-center">
+              <Users className="w-6 h-6 mx-auto mb-2 text-green-400" />
+              <p className="text-sm opacity-80">Match Type</p>
+              <p className="text-lg font-bold">1v1 Real Money</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Time Progress */}
+        <div className="mb-6">
+          <Progress 
+            value={((60 - timeLeft) / 60) * 100} 
+            className="h-3"
+          />
+        </div>
+
+        {/* Game Area */}
+        <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white">
+          <CardContent className="p-8">
+            <div ref={gameRef}>
+              {renderGame()}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Back Button - Only show when not playing */}
+        {gameState !== 'playing' && (
+          <div className="text-center mt-6">
+            <Button
+              onClick={onBackToHub}
+              variant="outline"
+              className="px-6 py-3 bg-white/10 text-white hover:bg-white/20 border-white/30"
+            >
+              ← Back to Gaming Hub
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

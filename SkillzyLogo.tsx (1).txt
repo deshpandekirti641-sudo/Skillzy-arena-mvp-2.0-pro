@@ -1,0 +1,130 @@
+'use client'
+
+import { Canvas, useFrame } from '@react-three/fiber'
+import { Text, Float, MeshDistortMaterial } from '@react-three/drei'
+import { useRef } from 'react'
+import type { Mesh } from 'three'
+
+interface SkillzyLogoProps {
+  size?: 'small' | 'medium' | 'large'
+  animated?: boolean
+}
+
+function AnimatedLogo() {
+  const logoRef = useRef<Mesh>(null)
+  const bgRef = useRef<Mesh>(null)
+
+  useFrame(({ clock }) => {
+    if (logoRef.current) {
+      logoRef.current.rotation.y = Math.sin(clock.elapsedTime * 0.5) * 0.1
+      logoRef.current.position.y = Math.sin(clock.elapsedTime * 0.8) * 0.05
+    }
+    if (bgRef.current) {
+      bgRef.current.rotation.z = clock.elapsedTime * 0.1
+    }
+  })
+
+  return (
+    <group>
+      {/* Background glow sphere */}
+      <mesh ref={bgRef} scale={2}>
+        <sphereGeometry args={[1, 16, 16]} />
+        <MeshDistortMaterial
+          color="#4F46E5"
+          transparent
+          opacity={0.2}
+          distort={0.3}
+          speed={2}
+        />
+      </mesh>
+
+      {/* Main logo text */}
+      <Float speed={1.5} rotationIntensity={0.2} floatIntensity={0.3}>
+        <Text
+          ref={logoRef}
+          font="/fonts/GeistVF.woff"
+          fontSize={0.8}
+          color="#FFFFFF"
+          anchorX="center"
+          anchorY="middle"
+          letterSpacing={0.05}
+        >
+          SKILLZY
+        </Text>
+      </Float>
+
+      {/* Subtitle */}
+      <Text
+        font="/fonts/GeistMonoVF.woff"
+        fontSize={0.2}
+        color="#10B981"
+        anchorX="center"
+        anchorY="middle"
+        position={[0, -0.6, 0]}
+        letterSpacing={0.1}
+      >
+        ARENA
+      </Text>
+
+      {/* Orbital elements */}
+      <Float speed={2} rotationIntensity={1} floatIntensity={0.5}>
+        <mesh position={[1.5, 0.3, 0]} scale={0.1}>
+          <sphereGeometry args={[1, 8, 8]} />
+          <meshStandardMaterial color="#F59E0B" emissive="#F59E0B" emissiveIntensity={0.3} />
+        </mesh>
+      </Float>
+
+      <Float speed={1.8} rotationIntensity={1.5} floatIntensity={0.3}>
+        <mesh position={[-1.5, -0.2, 0]} scale={0.08}>
+          <octahedronGeometry args={[1]} />
+          <meshStandardMaterial color="#EF4444" emissive="#EF4444" emissiveIntensity={0.3} />
+        </mesh>
+      </Float>
+
+      <Float speed={2.2} rotationIntensity={0.8} floatIntensity={0.6}>
+        <mesh position={[0, 1, -0.5]} scale={0.06}>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color="#8B5CF6" emissive="#8B5CF6" emissiveIntensity={0.3} />
+        </mesh>
+      </Float>
+    </group>
+  )
+}
+
+export function SkillzyLogo({ size = 'medium', animated = true }: SkillzyLogoProps) {
+  const dimensions = {
+    small: { width: 120, height: 40 },
+    medium: { width: 200, height: 80 },
+    large: { width: 300, height: 120 }
+  }
+
+  const { width, height } = dimensions[size]
+
+  if (!animated) {
+    // Static SVG version for performance
+    return (
+      <div className="flex items-center justify-center" style={{ width, height }}>
+        <div className="relative">
+          <div className="text-2xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
+            SKILLZY
+          </div>
+          <div className="text-xs font-mono text-emerald-500 text-center">ARENA</div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ width, height }} className="relative">
+      <Canvas
+        camera={{ position: [0, 0, 3], fov: 50 }}
+        gl={{ alpha: true, antialias: true }}
+      >
+        <ambientLight intensity={0.3} />
+        <pointLight position={[2, 2, 2]} intensity={1} />
+        <pointLight position={[-2, -2, -2]} intensity={0.5} color="#4F46E5" />
+        <AnimatedLogo />
+      </Canvas>
+    </div>
+  )
+}

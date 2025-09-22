@@ -1,0 +1,496 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from './ui/input-otp';
+import { Badge } from './ui/badge';
+import { Progress } from './ui/progress';
+import { toast } from 'sonner';
+import { useRealSpacetimeDB } from '../hooks/useRealSpacetimeDB';
+import { 
+  Smartphone, 
+  Shield, 
+  ArrowRight, 
+  Timer, 
+  RefreshCw, 
+  CheckCircle, 
+  Wifi,
+  AlertTriangle,
+  Zap
+} from 'lucide-react';
+
+interface RealMobileAuthProps {
+  onSuccess: () => void;
+}
+
+type AuthStep = 'mobile' | 'otp' | 'processing' | 'success';
+
+export function RealMobileAuth({ onSuccess }: RealMobileAuthProps) {
+  const {
+    connected,
+    connectionQuality,
+    isAuthenticated,
+    statusMessage,
+    sendOtp,
+    verifyOtp,
+    formatMobileNumber,
+    validateMobileNumber,
+    reconnect,
+  } = useRealSpacetimeDB();
+
+  // Authentication state
+  const [currentStep, setCurrentStep] = useState<AuthStep>('mobile');
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [username, setUsername] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  
+  // OTP state
+  const [otpSent, setOtpSent] = useState(false);
+  const [remainingTime, setRemainingTime] = useState(0);
+  const [canResend, setCanResend] = useState(true);
+  
+  // Refs for cleanup
+  const otpTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const resendTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const successTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Authentication success handler
+  useEffect(() => {
+    if (isAuthenticated && currentStep !== 'success') {
+      console.log('✅ Authentication successful - transitioning to success');
+      clearAllTimers();
+      setCurrentStep('success');
+      setProgress(100);
+      
+      successTimerRef.current = setTimeout(() => {
+        onSuccess();
+      }, 1500);
+    }
+  }, [isAuthenticated, currentStep, onSuccess]);
+
+  // OTP countdown timer
+  useEffect(() => {
+    if (remainingTime > 0) {
+      otpTimerRef.current = setTimeout(() => {
+        setRemainingTime(prev => Math.max(0, prev - 1));
+      }, 1000);
+    } else if (otpSent && remainingTime === 0) {
+      setCanResend(true);
+    }
+    
+    return () => {
+      if (otpTimerRef.current) {
+        clearTimeout(otpTimerRef.current);
+        otpTimerRef.current = null;
+      }
+    };
+  }, [remainingTime, otpSent]);
+
+  // Cleanup function
+  const clearAllTimers = useCallback(() => {
+    [otpTimerRef, resendTimerRef, successTimerRef].forEach(ref => {
+      if (ref.current) {
+        clearTimeout(ref.current);
+        ref.current = null;
+      }
+    });
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return clearAllTimers;
+  }, [clearAllTimers]);
+
+  // Connection status display
+  const getConnectionStatus = useCallback(() => {
+    if (!connected) {
+      return { 
+        color: 'text-orange-400', 
+        message: '🔌 Connecting to server...', 
+        icon: <RefreshCw className="w-4 h-4 animate-spin" /> 
+      };
+    }
+    
+    switch (connectionQuality) {
+      case 'excellent':
+        return { 
+          color: 'text-green-400', 
+          message: '🚀 Perfect connection', 
+          icon: <Wifi className="w-4 h-4" /> 
+        };
+      case 'good':
+        return { 
+          color: 'text-blue-400', 
+          message: '✅ Good connection', 
+          icon: <Wifi className="w-4 h-4" /> 
+        };
+      default:
+        return { 
+          color: 'text-gray-400', 
+          message: '🔄 Connecting...', 
+          icon: <RefreshCw className="w-4 h-4 animate-spin" /> 
+        };
+    }
+  }, [connected, connectionQuality]);
+
+  // Send OTP handler
+  const handleSendOtp = useCallback(async () => {
+    if (!connected) {
+      toast.error('Please wait for connection to establish');
+      return;
+    }
+
+    if (!mobileNumber.trim()) {
+      toast.error('Please enter your mobile number');
+      return;
+    }
+
+    const formatted = formatMobileNumber(mobileNumber);
+    if (!validateMobileNumber(formatted)) {
+      toast.error('Please enter a valid Indian mobile number');
+      return;
+    }
+
+    setIsProcessing(true);
+    setProgress(25);
+
+    try {
+      await sendOtp(formatted);
+      
+      // Success - advance to OTP step
+      const maskedNumber = formatted.replace(/^91/, '+91-').replace(/(\d{5})(\d{5})/, '$1-$2');
+      toast.success(`📱 OTP sent to ${maskedNumber}`);
+      setOtpSent(true);
+      setCurrentStep('otp');
+      setProgress(50);
+      setRemainingTime(300); // 5 minutes
+      setCanResend(false);
+      
+      // Allow resend after 30 seconds
+      resendTimerRef.current = setTimeout(() => setCanResend(true), 30000);
+      
+    } catch (error) {
+      console.error('Send OTP error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to send OTP. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [mobileNumber, formatMobileNumber, validateMobileNumber, sendOtp, connected]);
+
+  // Verify OTP handler
+  const handleVerifyOtp = useCallback(async () => {
+    if (!connected) {
+      toast.error('Connection lost. Please wait for reconnection.');
+      return;
+    }
+
+    if (otpCode.length !== 6) {
+      toast.error('Please enter the complete 6-digit OTP');
+      return;
+    }
+
+    if (!username.trim()) {
+      toast.error('Please enter a username');
+      return;
+    }
+
+    if (username.trim().length < 2) {
+      toast.error('Username must be at least 2 characters');
+      return;
+    }
+
+    setIsProcessing(true);
+    setCurrentStep('processing');
+    setProgress(75);
+
+    try {
+      const formatted = formatMobileNumber(mobileNumber);
+      await verifyOtp(formatted, otpCode, username.trim());
+      
+      // Success message will be shown by the authentication watcher
+      toast.success(`🎉 Welcome to Skillzy Arena, ${username}!`);
+      setProgress(90);
+      
+    } catch (error) {
+      console.error('Verify OTP error:', error);
+      toast.error(error instanceof Error ? error.message : 'Invalid OTP. Please try again.');
+      
+      // Return to OTP step
+      setCurrentStep('otp');
+      setProgress(50);
+      setIsProcessing(false);
+    }
+  }, [otpCode, username, verifyOtp, formatMobileNumber, mobileNumber, connected]);
+
+  // Resend OTP handler
+  const handleResendOtp = useCallback(async () => {
+    if (!canResend || isProcessing) return;
+    
+    setIsProcessing(true);
+    try {
+      await handleSendOtp();
+      toast.success('📱 New OTP sent successfully');
+    } catch (error) {
+      toast.error('Failed to resend OTP');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [canResend, isProcessing, handleSendOtp]);
+
+  const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  // Show connection error if not connected
+  if (!connected && currentStep !== 'success') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+        <Card className="bg-white/10 backdrop-blur-md border-white/20 max-w-md w-full">
+          <CardContent className="p-8 text-center">
+            <div className="w-16 h-16 bg-orange-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+              <AlertTriangle className="w-8 h-8 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">Connecting to Skillzy Arena...</h3>
+            <p className="text-white/80 mb-4">{statusMessage}</p>
+            
+            <Button 
+              onClick={reconnect}
+              disabled={isProcessing}
+              className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
+            >
+              {isProcessing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Retry Connection
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+            <Smartphone className="w-10 h-10 text-white" />
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-2">Skillzy Arena</h1>
+          <p className="text-white/80">Real money gaming platform</p>
+          
+          {/* Connection Status */}
+          <div className={`inline-flex items-center gap-2 mt-3 px-3 py-1 rounded-full text-sm ${getConnectionStatus().color} bg-white/10`}>
+            {getConnectionStatus().icon}
+            {getConnectionStatus().message}
+          </div>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="mb-8">
+          <Progress value={progress} className="w-full h-2" />
+          <div className="flex items-center justify-center mt-2 space-x-2">
+            <div className={`w-3 h-3 rounded-full ${currentStep === 'mobile' ? 'bg-yellow-400' : progress >= 50 ? 'bg-green-400' : 'bg-white/30'}`}></div>
+            <div className={`w-8 h-1 bg-white/30 rounded transition-all duration-300 ${progress >= 50 ? 'bg-green-400' : ''}`}></div>
+            <div className={`w-3 h-3 rounded-full ${currentStep === 'otp' || currentStep === 'processing' ? 'bg-yellow-400' : progress >= 75 ? 'bg-green-400' : 'bg-white/30'}`}></div>
+            <div className={`w-8 h-1 bg-white/30 rounded transition-all duration-300 ${progress >= 90 ? 'bg-green-400' : ''}`}></div>
+            <div className={`w-3 h-3 rounded-full ${currentStep === 'success' ? 'bg-green-400' : 'bg-white/30'}`}></div>
+          </div>
+        </div>
+
+        {/* Mobile Number Step */}
+        {currentStep === 'mobile' && (
+          <Card className="bg-white/10 backdrop-blur-md border-white/20">
+            <CardHeader className="text-center">
+              <CardTitle className="text-white flex items-center justify-center gap-2">
+                <Smartphone className="w-5 h-5" />
+                Enter Mobile Number
+              </CardTitle>
+              <p className="text-white/80 text-sm">We'll send you a secure OTP</p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="mobile" className="text-white">Mobile Number</Label>
+                <Input
+                  id="mobile"
+                  type="tel"
+                  placeholder="+91 9876543210"
+                  value={mobileNumber}
+                  onChange={(e) => setMobileNumber(e.target.value)}
+                  className="bg-white/10 border-white/20 text-white placeholder-white/50"
+                  maxLength={15}
+                  disabled={isProcessing}
+                />
+                <p className="text-xs text-white/60">Enter your 10-digit Indian mobile number</p>
+              </div>
+
+              <Button 
+                onClick={handleSendOtp}
+                disabled={isProcessing || !connected}
+                className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold"
+              >
+                {isProcessing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Sending OTP...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4 mr-2" />
+                    Send OTP
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* OTP Verification Step */}
+        {currentStep === 'otp' && (
+          <Card className="bg-white/10 backdrop-blur-md border-white/20">
+            <CardHeader className="text-center">
+              <CardTitle className="text-white flex items-center justify-center gap-2">
+                <Shield className="w-5 h-5" />
+                Verify Mobile Number
+              </CardTitle>
+              <p className="text-white/80 text-sm">
+                Enter the 6-digit code sent to<br />
+                <strong>{formatMobileNumber(mobileNumber).replace(/^91/, '+91-').replace(/(\d{5})(\d{5})/, '$1-$2')}</strong>
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <InputOTP 
+                    maxLength={6} 
+                    value={otpCode} 
+                    onChange={setOtpCode}
+                    disabled={isProcessing}
+                  >
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} className="bg-white/10 border-white/20 text-white" />
+                      <InputOTPSlot index={1} className="bg-white/10 border-white/20 text-white" />
+                      <InputOTPSlot index={2} className="bg-white/10 border-white/20 text-white" />
+                      <InputOTPSlot index={3} className="bg-white/10 border-white/20 text-white" />
+                      <InputOTPSlot index={4} className="bg-white/10 border-white/20 text-white" />
+                      <InputOTPSlot index={5} className="bg-white/10 border-white/20 text-white" />
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+
+                {remainingTime > 0 ? (
+                  <div className="text-center">
+                    <div className="flex items-center justify-center gap-2 text-yellow-400">
+                      <Timer className="w-4 h-4" />
+                      <span className="font-mono">OTP expires in {formatTime(remainingTime)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleResendOtp}
+                      disabled={!canResend || isProcessing}
+                      className="text-blue-400 hover:text-blue-300"
+                    >
+                      📱 Resend OTP
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="username" className="text-white">Choose Username</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="Your gaming username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="bg-white/10 border-white/20 text-white placeholder-white/50"
+                  maxLength={20}
+                  disabled={isProcessing}
+                />
+                <p className="text-xs text-white/60">This will be your display name in games</p>
+              </div>
+
+              <Button 
+                onClick={handleVerifyOtp}
+                disabled={isProcessing || otpCode.length !== 6 || !username.trim()}
+                className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold"
+              >
+                {isProcessing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Verify & Create Account
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Processing Step */}
+        {currentStep === 'processing' && (
+          <Card className="bg-white/10 backdrop-blur-md border-white/20">
+            <CardContent className="p-8 text-center">
+              <div className="animate-pulse mb-6">
+                <div className="w-16 h-16 bg-yellow-400 rounded-full mx-auto mb-4 animate-bounce flex items-center justify-center">
+                  <RefreshCw className="w-8 h-8 text-white animate-spin" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Creating Your Account...</h3>
+                <p className="text-white/80">Setting up your gaming profile with ₹10 welcome bonus</p>
+              </div>
+              <Progress value={progress} className="w-full" />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Success Step */}
+        {currentStep === 'success' && (
+          <Card className="bg-white/10 backdrop-blur-md border-white/20">
+            <CardContent className="p-8 text-center">
+              <div className="w-16 h-16 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <CheckCircle className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Welcome to Skillzy Arena!</h3>
+              <p className="text-white/80 mb-4">Account created successfully</p>
+              <div className="flex justify-center mb-4">
+                <Badge className="bg-yellow-500 text-black font-semibold">₹10 Welcome Bonus Added!</Badge>
+              </div>
+              <p className="text-white/60 text-sm">Loading gaming hub...</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Footer */}
+        <div className="text-center mt-8 text-xs text-white/60">
+          <p>By continuing, you agree to our Terms of Service</p>
+          <p>and Privacy Policy. Real money gaming for 18+</p>
+        </div>
+      </div>
+    </div>
+  );
+}

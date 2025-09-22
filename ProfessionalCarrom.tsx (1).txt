@@ -1,0 +1,816 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Button } from '../ui/button';
+import { Card, CardContent, CardHeader } from '../ui/card';
+import { Badge } from '../ui/badge';
+import { Progress } from '../ui/progress';
+import { 
+  Target, Clock, ArrowLeft, Flag, Zap, 
+  Trophy, Crosshair, Circle, Crown
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+interface ProfessionalCarromProps {
+  matchId: string;
+  playerName: string;
+  opponentName: string;
+  timeLeft: number;
+  betAmount: number;
+  onGameEnd: (score: number) => void;
+  onQuitGame: () => void;
+}
+
+interface Position {
+  x: number;
+  y: number;
+}
+
+interface Piece {
+  id: string;
+  type: 'white' | 'black' | 'queen' | 'striker';
+  position: Position;
+  isPocketed: boolean;
+  owner?: 'player' | 'opponent';
+}
+
+interface GameState {
+  pieces: Piece[];
+  playerScore: number;
+  opponentScore: number;
+  playerWhites: number;
+  playerBlacks: number;
+  opponentWhites: number;
+  opponentBlacks: number;
+  queenPocketed: boolean;
+  queenOwner: 'player' | 'opponent' | null;
+  shots: number;
+  fouls: number;
+}
+
+const BOARD_SIZE = 300;
+const PIECE_SIZE = 12;
+const POCKET_POSITIONS = [
+  { x: 20, y: 20 },    // Top-left
+  { x: 280, y: 20 },   // Top-right
+  { x: 20, y: 280 },   // Bottom-left
+  { x: 280, y: 280 }   // Bottom-right
+];
+
+// Points for different pieces
+const PIECE_VALUES = {
+  white: 20,
+  black: 10,
+  queen: 50
+};
+
+const INITIAL_SETUP = (): Piece[] => {
+  const pieces: Piece[] = [];
+  
+  // Center formation
+  const center = { x: BOARD_SIZE / 2, y: BOARD_SIZE / 2 };
+  
+  // Queen in the center
+  pieces.push({
+    id: 'queen',
+    type: 'queen',
+    position: { x: center.x, y: center.y },
+    isPocketed: false
+  });
+  
+  // Arrange pieces in diamond formation around queen
+  const positions = [
+    // Inner ring
+    { x: center.x - 15, y: center.y },     // Left
+    { x: center.x + 15, y: center.y },     // Right
+    { x: center.x, y: center.y - 15 },     // Top
+    { x: center.x, y: center.y + 15 },     // Bottom
+    
+    // Outer ring
+    { x: center.x - 25, y: center.y - 10 }, // Top-left
+    { x: center.x + 25, y: center.y - 10 }, // Top-right
+    { x: center.x - 25, y: center.y + 10 }, // Bottom-left
+    { x: center.x + 25, y: center.y + 10 }, // Bottom-right
+    { x: center.x - 10, y: center.y - 25 }, // Left-top
+    { x: center.x + 10, y: center.y - 25 }, // Right-top
+    { x: center.x - 10, y: center.y + 25 }, // Left-bottom
+    { x: center.x + 10, y: center.y + 25 }, // Right-bottom
+    
+    // Additional positions
+    { x: center.x - 30, y: center.y },     // Far left
+    { x: center.x + 30, y: center.y },     // Far right
+    { x: center.x, y: center.y - 30 },     // Far top
+    { x: center.x, y: center.y + 30 },     // Far bottom
+    { x: center.x - 20, y: center.y - 20 }, // Diagonal
+    { x: center.x + 20, y: center.y - 20 }, // Diagonal
+    { x: center.x - 20, y: center.y + 20 }, // Diagonal
+  ];
+  
+  // Add 9 white and 9 black pieces alternating
+  positions.forEach((pos, index) => {
+    const isWhite = index % 2 === 0;
+    pieces.push({
+      id: `${isWhite ? 'white' : 'black'}-${Math.floor(index / 2)}`,
+      type: isWhite ? 'white' : 'black',
+      position: pos,
+      isPocketed: false
+    });
+  });
+  
+  // Add striker at bottom
+  pieces.push({
+    id: 'striker',
+    type: 'striker',
+    position: { x: center.x, y: BOARD_SIZE - 40 },
+    isPocketed: false
+  });
+  
+  return pieces;
+};
+
+export default function ProfessionalCarrom({
+  matchId,
+  playerName,
+  opponentName,
+  timeLeft,
+  betAmount,
+  onGameEnd,
+  onQuitGame
+}: ProfessionalCarromProps) {
+  const [gameState, setGameState] = useState<GameState>({
+    pieces: INITIAL_SETUP(),
+    playerScore: 0,
+    opponentScore: 0,
+    playerWhites: 0,
+    playerBlacks: 0,
+    opponentWhites: 0,
+    opponentBlacks: 0,
+    queenPocketed: false,
+    queenOwner: null,
+    shots: 0,
+    fouls: 0
+  });
+  
+  const [isPlayerTurn, setIsPlayerTurn] = useState(true);
+  const [selectedPower, setSelectedPower] = useState(50);
+  const [selectedAngle, setSelectedAngle] = useState(0);
+  const [isAiming, setIsAiming] = useState(false);
+  const [lastShot, setLastShot] = useState<{ power: number; angle: number; score: number } | null>(null);
+  const [gamePhase, setGamePhase] = useState<'opening' | 'middle' | 'endgame'>('opening');
+  
+  // Canvas ref for the board
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number>();
+  const audioContextRef = useRef<AudioContext | null>(null);
+  
+  useEffect(() => {
+    // Initialize audio context
+    if (typeof window !== 'undefined') {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    return () => {
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+  
+  // Game end when time runs out
+  useEffect(() => {
+    if (timeLeft === 0) {
+      const finalScore = calculateFinalScore();
+      onGameEnd(finalScore);
+    }
+  }, [timeLeft]);
+  
+  // Update game phase based on pieces remaining
+  useEffect(() => {
+    const activePieces = gameState.pieces.filter(p => !p.isPocketed && p.type !== 'striker').length;
+    if (activePieces <= 5) {
+      setGamePhase('endgame');
+    } else if (activePieces <= 12) {
+      setGamePhase('middle');
+    } else {
+      setGamePhase('opening');
+    }
+  }, [gameState.pieces]);
+  
+  const playSound = useCallback((type: 'shot' | 'pocket' | 'queen' | 'foul' | 'win') => {
+    if (!audioContextRef.current) return;
+    
+    const ctx = audioContextRef.current;
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    switch (type) {
+      case 'shot':
+        oscillator.frequency.setValueAtTime(200, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.3);
+        break;
+      case 'pocket':
+        oscillator.frequency.setValueAtTime(800, ctx.currentTime);
+        oscillator.frequency.setValueAtTime(600, ctx.currentTime + 0.1);
+        oscillator.frequency.setValueAtTime(400, ctx.currentTime + 0.2);
+        break;
+      case 'queen':
+        for (let i = 0; i < 4; i++) {
+          oscillator.frequency.setValueAtTime(800 + i * 200, ctx.currentTime + i * 0.1);
+        }
+        break;
+      case 'foul':
+        oscillator.frequency.setValueAtTime(150, ctx.currentTime);
+        oscillator.frequency.setValueAtTime(100, ctx.currentTime + 0.2);
+        break;
+      case 'win':
+        for (let i = 0; i < 6; i++) {
+          oscillator.frequency.setValueAtTime(523 + (i % 3) * 131, ctx.currentTime + i * 0.15);
+        }
+        break;
+    }
+    
+    oscillator.type = 'triangle';
+    gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+    
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 0.5);
+  }, []);
+  
+  const isNearPocket = useCallback((position: Position): boolean => {
+    return POCKET_POSITIONS.some(pocket => {
+      const distance = Math.sqrt(
+        Math.pow(position.x - pocket.x, 2) + Math.pow(position.y - pocket.y, 2)
+      );
+      return distance <= PIECE_SIZE * 1.5;
+    });
+  }, []);
+  
+  const simulateShot = useCallback((power: number, angle: number) => {
+    const newPieces = [...gameState.pieces];
+    const striker = newPieces.find(p => p.id === 'striker')!;
+    
+    // Calculate shot trajectory
+    const radians = (angle * Math.PI) / 180;
+    const velocity = power / 10;
+    
+    // Simulate striker movement
+    let newX = striker.position.x + Math.cos(radians) * velocity * 3;
+    let newY = striker.position.y + Math.sin(radians) * velocity * 3;
+    
+    // Keep striker on board
+    newX = Math.max(20, Math.min(BOARD_SIZE - 20, newX));
+    newY = Math.max(20, Math.min(BOARD_SIZE - 20, newY));
+    
+    striker.position = { x: newX, y: newY };
+    
+    // Check for collisions and simulate piece movement
+    const hitPieces: Piece[] = [];
+    let pocketedPieces: Piece[] = [];
+    
+    newPieces.forEach(piece => {
+      if (piece.type === 'striker' || piece.isPocketed) return;
+      
+      const distance = Math.sqrt(
+        Math.pow(piece.position.x - striker.position.x, 2) + 
+        Math.pow(piece.position.y - striker.position.y, 2)
+      );
+      
+      if (distance <= PIECE_SIZE * 2) {
+        hitPieces.push(piece);
+        
+        // Simulate piece movement after hit
+        const hitAngle = Math.atan2(
+          piece.position.y - striker.position.y,
+          piece.position.x - striker.position.x
+        );
+        
+        const hitPower = Math.max(0.3, power / 100) * (Math.random() * 0.5 + 0.5);
+        
+        piece.position.x += Math.cos(hitAngle) * hitPower * 40;
+        piece.position.y += Math.sin(hitAngle) * hitPower * 40;
+        
+        // Keep pieces on board
+        piece.position.x = Math.max(20, Math.min(BOARD_SIZE - 20, piece.position.x));
+        piece.position.y = Math.max(20, Math.min(BOARD_SIZE - 20, piece.position.y));
+        
+        // Check if piece is pocketed
+        if (isNearPocket(piece.position)) {
+          piece.isPocketed = true;
+          piece.owner = 'player';
+          pocketedPieces.push(piece);
+        }
+      }
+    });
+    
+    return { newPieces, hitPieces, pocketedPieces };
+  }, [gameState.pieces, isNearPocket]);
+  
+  const handleShot = useCallback(() => {
+    if (!isPlayerTurn || isAiming) return;
+    
+    setIsAiming(true);
+    playSound('shot');
+    
+    const { newPieces, hitPieces, pocketedPieces } = simulateShot(selectedPower, selectedAngle);
+    
+    let shotScore = 0;
+    let newPlayerScore = gameState.playerScore;
+    let newPlayerWhites = gameState.playerWhites;
+    let newPlayerBlacks = gameState.playerBlacks;
+    let newQueenPocketed = gameState.queenPocketed;
+    let newQueenOwner = gameState.queenOwner;
+    
+    // Calculate score from pocketed pieces
+    pocketedPieces.forEach(piece => {
+      if (piece.type === 'white') {
+        shotScore += PIECE_VALUES.white;
+        newPlayerWhites++;
+        playSound('pocket');
+        toast.success(`White piece pocketed! +${PIECE_VALUES.white}pts`);
+      } else if (piece.type === 'black') {
+        shotScore += PIECE_VALUES.black;
+        newPlayerBlacks++;
+        playSound('pocket');
+        toast.success(`Black piece pocketed! +${PIECE_VALUES.black}pts`);
+      } else if (piece.type === 'queen') {
+        shotScore += PIECE_VALUES.queen;
+        newQueenPocketed = true;
+        newQueenOwner = 'player';
+        playSound('queen');
+        toast.success(`👑 Queen pocketed! +${PIECE_VALUES.queen}pts`);
+      }
+    });
+    
+    // Bonus points for multiple pieces in one shot
+    if (pocketedPieces.length > 1) {
+      const bonus = pocketedPieces.length * 15;
+      shotScore += bonus;
+      toast.success(`Multi-pocket bonus! +${bonus}pts`);
+    }
+    
+    // Accuracy bonus (hitting pieces)
+    if (hitPieces.length > 0) {
+      shotScore += hitPieces.length * 5;
+    }
+    
+    // Power efficiency bonus
+    if (selectedPower >= 70 && selectedPower <= 85) {
+      shotScore += 10; // Sweet spot power
+    }
+    
+    newPlayerScore += shotScore;
+    
+    const newGameState: GameState = {
+      pieces: newPieces,
+      playerScore: newPlayerScore,
+      opponentScore: gameState.opponentScore,
+      playerWhites: newPlayerWhites,
+      playerBlacks: newPlayerBlacks,
+      opponentWhites: gameState.opponentWhites,
+      opponentBlacks: gameState.opponentBlacks,
+      queenPocketed: newQueenPocketed,
+      queenOwner: newQueenOwner,
+      shots: gameState.shots + 1,
+      fouls: gameState.fouls
+    };
+    
+    setGameState(newGameState);
+    setLastShot({ power: selectedPower, angle: selectedAngle, score: shotScore });
+    
+    // Check win condition
+    const remainingPieces = newPieces.filter(p => !p.isPocketed && p.type !== 'striker');
+    if (remainingPieces.length <= 1) {
+      playSound('win');
+      toast.success('🎉 All pieces cleared!');
+      setTimeout(() => {
+        const finalScore = calculateFinalScore(newGameState);
+        onGameEnd(finalScore);
+      }, 2000);
+      return;
+    }
+    
+    setTimeout(() => {
+      setIsAiming(false);
+      setIsPlayerTurn(false);
+      
+      // Opponent turn
+      setTimeout(() => {
+        handleOpponentTurn(newGameState);
+      }, 1500);
+    }, 2000);
+  }, [isPlayerTurn, isAiming, selectedPower, selectedAngle, gameState, simulateShot, playSound, onGameEnd]);
+  
+  const handleOpponentTurn = useCallback((currentState: GameState) => {
+    // AI opponent logic
+    const activePieces = currentState.pieces.filter(p => !p.isPocketed && p.type !== 'striker');
+    const striker = currentState.pieces.find(p => p.id === 'striker')!;
+    
+    // Simple AI: aim for closest piece with random variation
+    let targetPiece = activePieces[0];
+    let minDistance = Infinity;
+    
+    activePieces.forEach(piece => {
+      const distance = Math.sqrt(
+        Math.pow(piece.position.x - striker.position.x, 2) + 
+        Math.pow(piece.position.y - striker.position.y, 2)
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        targetPiece = piece;
+      }
+    });
+    
+    if (targetPiece) {
+      const aiAngle = Math.atan2(
+        targetPiece.position.y - striker.position.y,
+        targetPiece.position.x - striker.position.x
+      ) * 180 / Math.PI;
+      
+      const aiPower = 60 + Math.random() * 30; // Random power between 60-90
+      const accuracy = 0.8 + Math.random() * 0.4; // 80-120% accuracy
+      
+      // Simulate opponent shot (simplified)
+      const opponentScore = Math.floor(Math.random() * 40) + 10; // 10-50 points
+      
+      const updatedState: GameState = {
+        ...currentState,
+        opponentScore: currentState.opponentScore + opponentScore,
+        opponentWhites: currentState.opponentWhites + (Math.random() > 0.7 ? 1 : 0),
+        opponentBlacks: currentState.opponentBlacks + (Math.random() > 0.8 ? 1 : 0)
+      };
+      
+      setGameState(updatedState);
+      
+      if (opponentScore > 0) {
+        playSound('pocket');
+        toast(`🤖 ${opponentName} scored ${opponentScore} points!`);
+      } else {
+        playSound('shot');
+      }
+    }
+    
+    setTimeout(() => {
+      setIsPlayerTurn(true);
+    }, 2000);
+  }, [opponentName, playSound]);
+  
+  const calculateFinalScore = useCallback((state: GameState = gameState): number => {
+    let finalScore = state.playerScore;
+    
+    // Efficiency bonuses
+    if (state.shots < 20) finalScore += 200; // Efficient play
+    if (state.fouls < 3) finalScore += 100;  // Clean play
+    
+    // Collection bonuses
+    finalScore += state.playerWhites * 30; // White collection bonus
+    finalScore += state.playerBlacks * 20; // Black collection bonus
+    
+    // Queen bonus
+    if (state.queenOwner === 'player') finalScore += 150;
+    
+    // Game phase bonus
+    switch (gamePhase) {
+      case 'opening':
+        finalScore += 100;
+        break;
+      case 'middle':
+        finalScore += 150;
+        break;
+      case 'endgame':
+        finalScore += 200;
+        break;
+    }
+    
+    // Time bonus
+    finalScore += Math.max(0, timeLeft) * 3;
+    
+    return Math.max(0, Math.round(finalScore));
+  }, [gameState, gamePhase, timeLeft]);
+  
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+  
+  // Render carrom board
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
+    
+    // Draw board background
+    ctx.fillStyle = '#F5DEB3'; // Wheat color
+    ctx.fillRect(0, 0, BOARD_SIZE, BOARD_SIZE);
+    
+    // Draw border
+    ctx.strokeStyle = '#8B4513';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, BOARD_SIZE - 4, BOARD_SIZE - 4);
+    
+    // Draw pockets
+    POCKET_POSITIONS.forEach(pocket => {
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(pocket.x, pocket.y, 15, 0, 2 * Math.PI);
+      ctx.fill();
+    });
+    
+    // Draw center circle
+    ctx.strokeStyle = '#8B4513';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(BOARD_SIZE / 2, BOARD_SIZE / 2, 40, 0, 2 * Math.PI);
+    ctx.stroke();
+    
+    // Draw pieces
+    gameState.pieces.forEach(piece => {
+      if (piece.isPocketed) return;
+      
+      ctx.beginPath();
+      ctx.arc(piece.position.x, piece.position.y, PIECE_SIZE / 2, 0, 2 * Math.PI);
+      
+      switch (piece.type) {
+        case 'white':
+          ctx.fillStyle = '#FFF';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1;
+          break;
+        case 'black':
+          ctx.fillStyle = '#000';
+          ctx.strokeStyle = '#FFF';
+          ctx.lineWidth = 1;
+          break;
+        case 'queen':
+          ctx.fillStyle = '#FF1493';
+          ctx.strokeStyle = '#FFD700';
+          ctx.lineWidth = 2;
+          break;
+        case 'striker':
+          ctx.fillStyle = '#4169E1';
+          ctx.strokeStyle = '#FFF';
+          ctx.lineWidth = 2;
+          break;
+      }
+      
+      ctx.fill();
+      ctx.stroke();
+    });
+    
+    // Draw aiming line if aiming
+    if (isPlayerTurn && !isAiming) {
+      const striker = gameState.pieces.find(p => p.id === 'striker')!;
+      const radians = (selectedAngle * Math.PI) / 180;
+      const lineLength = selectedPower * 1.5;
+      
+      ctx.strokeStyle = '#FF0000';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(striker.position.x, striker.position.y);
+      ctx.lineTo(
+        striker.position.x + Math.cos(radians) * lineLength,
+        striker.position.y + Math.sin(radians) * lineLength
+      );
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    
+  }, [gameState, selectedAngle, selectedPower, isPlayerTurn, isAiming]);
+  
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-cyan-800 p-4 pt-12">
+      {/* Header */}
+      <div className="max-w-2xl mx-auto mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <Button 
+            variant="ghost" 
+            onClick={onQuitGame}
+            className="text-white hover:bg-white/10"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Quit
+          </Button>
+          
+          <div className="text-center">
+            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              🎯 Carrom Master
+            </h1>
+            <p className="text-blue-200 text-sm">₹{betAmount} Match</p>
+          </div>
+          
+          <div className="text-right text-white">
+            <p className="text-sm text-blue-200">Time Left</p>
+            <p className="font-bold text-lg">{formatTime(timeLeft)}</p>
+          </div>
+        </div>
+        
+        {/* Players */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <Card className="bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">
+                    {playerName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium text-sm">{playerName}</p>
+                  <div className="flex gap-2">
+                    <Badge className="text-xs bg-white/20">W:{gameState.playerWhites}</Badge>
+                    <Badge className="text-xs bg-black/40 text-white">B:{gameState.playerBlacks}</Badge>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-yellow-400 font-bold">{gameState.playerScore}</p>
+                  <p className="text-white/60 text-xs">Score</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">
+                    {opponentName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium text-sm">{opponentName}</p>
+                  <div className="flex gap-2">
+                    <Badge className="text-xs bg-white/20">W:{gameState.opponentWhites}</Badge>
+                    <Badge className="text-xs bg-black/40 text-white">B:{gameState.opponentBlacks}</Badge>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-blue-400 font-bold">{gameState.opponentScore}</p>
+                  <p className="text-white/60 text-xs">Score</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      
+      {/* Game Board */}
+      <div className="max-w-lg mx-auto mb-4">
+        <div className="bg-amber-100 p-2 rounded-lg shadow-2xl">
+          <canvas
+            ref={canvasRef}
+            width={BOARD_SIZE}
+            height={BOARD_SIZE}
+            className="w-full h-auto border-2 border-amber-800 rounded"
+          />
+        </div>
+      </div>
+      
+      {/* Controls */}
+      <div className="max-w-md mx-auto space-y-4">
+        {isPlayerTurn && !isAiming && (
+          <div className="space-y-4">
+            {/* Power Control */}
+            <Card className="bg-white/10 backdrop-blur border-white/20">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-white font-medium">Shot Power</label>
+                  <span className="text-yellow-400 font-bold">{selectedPower}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="20"
+                  max="100"
+                  value={selectedPower}
+                  onChange={(e) => setSelectedPower(Number(e.target.value))}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-white/60 mt-1">
+                  <span>Gentle</span>
+                  <span>Powerful</span>
+                </div>
+              </CardContent>
+            </Card>
+            
+            {/* Angle Control */}
+            <Card className="bg-white/10 backdrop-blur border-white/20">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-white font-medium">Aim Direction</label>
+                  <span className="text-blue-400 font-bold">{selectedAngle}°</span>
+                </div>
+                <input
+                  type="range"
+                  min="-90"
+                  max="90"
+                  value={selectedAngle}
+                  onChange={(e) => setSelectedAngle(Number(e.target.value))}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-white/60 mt-1">
+                  <span>Left</span>
+                  <span>Center</span>
+                  <span>Right</span>
+                </div>
+              </CardContent>
+            </Card>
+            
+            {/* Shoot Button */}
+            <Button 
+              onClick={handleShot}
+              disabled={isAiming}
+              className="w-full py-6 text-xl font-bold bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-400 hover:to-cyan-400 animate-pulse"
+            >
+              <Target className="w-6 h-6 mr-2" />
+              Take Shot
+            </Button>
+          </div>
+        )}
+        
+        {isAiming && (
+          <div className="text-center">
+            <Badge className="bg-orange-500 text-white text-lg px-4 py-2 animate-pulse">
+              <Crosshair className="w-5 h-5 mr-2" />
+              Shot in Progress...
+            </Badge>
+          </div>
+        )}
+        
+        {!isPlayerTurn && (
+          <div className="text-center">
+            <Badge className="bg-red-500 text-white text-lg px-4 py-2 animate-pulse">
+              <Clock className="w-5 h-5 mr-2" />
+              {opponentName} is playing...
+            </Badge>
+          </div>
+        )}
+        
+        {/* Last Shot Info */}
+        {lastShot && (
+          <Card className="bg-green-500/20 border-green-400/30">
+            <CardContent className="p-3 text-center">
+              <p className="text-green-300 font-medium">
+                Last Shot: {lastShot.power}% power, {lastShot.angle}° angle
+              </p>
+              <p className="text-green-400 font-bold">+{lastShot.score} points!</p>
+            </CardContent>
+          </Card>
+        )}
+        
+        {/* Game Stats */}
+        <div className="grid grid-cols-4 gap-2">
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-yellow-400 font-bold">{gameState.shots}</p>
+            <p className="text-white/60 text-xs">Shots</p>
+          </div>
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-green-400 font-bold">{gameState.playerWhites + gameState.playerBlacks}</p>
+            <p className="text-white/60 text-xs">Pocketed</p>
+          </div>
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-purple-400 font-bold">{gameState.queenOwner === 'player' ? '👑' : '❌'}</p>
+            <p className="text-white/60 text-xs">Queen</p>
+          </div>
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-blue-400 font-bold">{gamePhase}</p>
+            <p className="text-white/60 text-xs">Phase</p>
+          </div>
+        </div>
+        
+        {/* Instructions */}
+        <div className="text-white/80 text-sm space-y-1">
+          <p>🎯 <strong>Pocket pieces to score points</strong></p>
+          <p>⭐ <strong>White pieces:</strong> 20pts • <strong>Black pieces:</strong> 10pts</p>
+          <p>👑 <strong>Queen:</strong> 50pts bonus</p>
+        </div>
+        
+        {/* Submit Score Button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const finalScore = calculateFinalScore();
+            onGameEnd(finalScore);
+          }}
+          className="w-full bg-cyan-500/20 border-cyan-400 text-cyan-300 hover:bg-cyan-500/30"
+        >
+          <Flag className="w-4 h-4 mr-1" />
+          Submit Score ({calculateFinalScore()})
+        </Button>
+      </div>
+    </div>
+  );
+}

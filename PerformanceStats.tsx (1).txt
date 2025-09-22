@@ -1,0 +1,128 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import Stats from 'stats.js'
+
+interface PerformanceStatsProps {
+  gameScore?: number
+  playerPosition?: { x: number; y: number; z: number }
+  gameState?: string
+  customStats?: Record<string, number | string>
+}
+
+export function PerformanceStats({ 
+  gameScore = 0, 
+  playerPosition,
+  gameState = 'playing',
+  customStats 
+}: PerformanceStatsProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const statsRef = useRef<Stats>()
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    setIsMobile(window.innerWidth < 768)
+    
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    // Create FPS, MS, and Memory stats
+    const fpsStats = new Stats()
+    fpsStats.showPanel(0) // FPS
+    fpsStats.dom.style.position = 'relative'
+    fpsStats.dom.style.marginBottom = '2px'
+
+    const msStats = new Stats()
+    msStats.showPanel(1) // MS
+    msStats.dom.style.position = 'relative'
+    msStats.dom.style.marginBottom = '2px'
+
+    const memStats = new Stats()
+    memStats.showPanel(2) // Memory
+    memStats.dom.style.position = 'relative'
+
+    // Optimize panel size for mobile
+    const panelSize = isMobile ? { width: '60px', height: '36px' } : { width: '80px', height: '48px' }
+    const panels = [fpsStats.dom, msStats.dom, memStats.dom]
+    panels.forEach(panel => {
+      panel.style.width = panelSize.width
+      panel.style.height = panelSize.height
+    })
+
+    containerRef.current.appendChild(fpsStats.dom)
+    containerRef.current.appendChild(msStats.dom)
+    containerRef.current.appendChild(memStats.dom)
+
+    function animate() {
+      fpsStats.begin()
+      msStats.begin()
+      memStats.begin()
+
+      fpsStats.end()
+      msStats.end()
+      memStats.end()
+
+      requestAnimationFrame(animate)
+    }
+
+    animate()
+    statsRef.current = fpsStats
+
+    return () => {
+      if (containerRef.current) {
+        containerRef.current.innerHTML = ''
+      }
+    }
+  }, [isMobile])
+
+  const textSize = isMobile ? 'text-xs' : 'text-sm'
+  const containerSize = isMobile ? 'p-2' : 'p-3'
+
+  return (
+    <div className={`fixed top-2 right-2 bg-black bg-opacity-90 rounded-lg ${containerSize} z-50 border border-gray-600 backdrop-blur-sm`}>
+      <div className={`text-white ${textSize} font-bold mb-1 text-center`}>
+        {isMobile ? 'Stats' : 'Performance'}
+      </div>
+      
+      <div ref={containerRef} className="flex flex-col mb-2" />
+      
+      <div className={`text-white text-xs space-y-1`}>
+        <div className="flex justify-between">
+          <span>Score:</span>
+          <span className="font-mono text-yellow-400">{gameScore.toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>Mobile:</span>
+          <span className="font-mono text-green-400">{isMobile ? 'Yes' : 'No'}</span>
+        </div>
+        {playerPosition && (
+          <div className="flex justify-between">
+            <span>Pos:</span>
+            <span className="font-mono text-blue-400">
+              {Math.round(playerPosition.x)}, {Math.round(playerPosition.y)}, {Math.round(playerPosition.z)}
+            </span>
+          </div>
+        )}
+        {customStats && Object.entries(customStats).map(([key, value]) => (
+          <div key={key} className="flex justify-between">
+            <span>{key}:</span>
+            <span className="font-mono text-purple-400">{value}</span>
+          </div>
+        ))}
+      </div>
+      
+      <div className="text-gray-400 text-xs mt-1 text-center">
+        <div>FPS • MS • MB</div>
+        <div className="text-orange-400">{gameState}</div>
+      </div>
+    </div>
+  )
+}

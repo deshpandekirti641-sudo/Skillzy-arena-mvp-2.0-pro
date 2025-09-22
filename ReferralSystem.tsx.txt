@@ -1,0 +1,420 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import type { FC } from 'react'
+
+interface ReferralSystemProps {
+  userCode: string
+  referralEarnings: number
+  totalReferrals: number
+  isOpen: boolean
+  onClose: () => void
+  onInviteFriend: (method: string) => void
+}
+
+interface ReferralStats {
+  totalReferrals: number
+  totalEarnings: number
+  thisMonth: number
+  pending: number
+  level1Count: number
+  level2Count: number
+}
+
+const ReferralSystem: FC<ReferralSystemProps> = ({
+  userCode,
+  referralEarnings,
+  totalReferrals,
+  isOpen,
+  onClose,
+  onInviteFriend
+}) => {
+  const [activeTab, setActiveTab] = useState<'invite' | 'earnings' | 'history'>('invite')
+  const [copiedCode, setCopiedCode] = useState(false)
+  const [referralStats, setReferralStats] = useState<ReferralStats>({
+    totalReferrals,
+    totalEarnings: referralEarnings,
+    thisMonth: 450,
+    pending: 120,
+    level1Count: Math.floor(totalReferrals * 0.7),
+    level2Count: Math.floor(totalReferrals * 0.3)
+  })
+
+  const shareText = `🎮 Join Skillzy Arena and win real money!\n\n💰 Earn ₹16 in skill-based games like Chess, Snake & Ladder, Carrom\n🎁 Use my referral code: ${userCode}\n💵 Get ₹10 bonus on signup!\n\n⬇️ Download now and start earning!`
+  const shareUrl = `https://skillzyarena.com?ref=${userCode}`
+
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(userCode)
+      setCopiedCode(true)
+      setTimeout(() => setCopiedCode(false), 2000)
+    } catch (error) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea')
+      textArea.value = userCode
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+      setCopiedCode(true)
+      setTimeout(() => setCopiedCode(false), 2000)
+    }
+  }
+
+  const handleShare = async (method: string) => {
+    onInviteFriend(method)
+    
+    switch (method) {
+      case 'whatsapp':
+        window.open(`https://wa.me/?text=${encodeURIComponent(shareText + '\n\n' + shareUrl)}`, '_blank')
+        break
+      case 'telegram':
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`, '_blank')
+        break
+      case 'instagram':
+        await navigator.clipboard.writeText(shareText + '\n\n' + shareUrl)
+        alert('Link copied! You can now paste it in Instagram')
+        break
+      case 'facebook':
+        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
+        break
+      case 'twitter':
+        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`, '_blank')
+        break
+      case 'sms':
+        window.open(`sms:?body=${encodeURIComponent(shareText + '\n\n' + shareUrl)}`)
+        break
+      case 'more':
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: 'Join Skillzy Arena',
+              text: shareText,
+              url: shareUrl
+            })
+          } catch (error) {
+            handleCopyCode()
+          }
+        } else {
+          handleCopyCode()
+        }
+        break
+    }
+  }
+
+  const socialButtons = [
+    { id: 'whatsapp', name: 'WhatsApp', icon: '💬', color: 'from-green-500 to-green-600', popular: true },
+    { id: 'telegram', name: 'Telegram', icon: '✈️', color: 'from-blue-500 to-blue-600', popular: true },
+    { id: 'instagram', name: 'Instagram', icon: '📷', color: 'from-pink-500 to-purple-600', popular: true },
+    { id: 'facebook', name: 'Facebook', icon: '📘', color: 'from-blue-600 to-blue-700', popular: false },
+    { id: 'twitter', name: 'Twitter', icon: '🐦', color: 'from-blue-400 to-blue-500', popular: false },
+    { id: 'sms', name: 'SMS', icon: '📱', color: 'from-gray-500 to-gray-600', popular: false }
+  ]
+
+  const earningsHistory = [
+    { date: '2024-01-15', type: 'Level 1 Referral', friend: 'Rahul K.', amount: 25, status: 'paid' },
+    { date: '2024-01-14', type: 'Level 2 Referral', friend: 'Priya S.', amount: 10, status: 'paid' },
+    { date: '2024-01-13', type: 'Level 1 Referral', friend: 'Amit P.', amount: 25, status: 'paid' },
+    { date: '2024-01-12', type: 'Level 1 Referral', friend: 'Sneha M.', amount: 25, status: 'pending' },
+    { date: '2024-01-11', type: 'Level 2 Referral', friend: 'Arjun T.', amount: 10, status: 'paid' }
+  ]
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
+        
+        {/* Header */}
+        <div className="sticky top-0 bg-white rounded-t-3xl border-b p-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-800">Refer & Earn</h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Tab Selector */}
+        <div className="p-4 pb-0">
+          <div className="bg-gray-100 rounded-2xl p-1 flex">
+            <button
+              onClick={() => setActiveTab('invite')}
+              className={`flex-1 py-2 px-3 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'invite'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              🎁 Invite
+            </button>
+            <button
+              onClick={() => setActiveTab('earnings')}
+              className={`flex-1 py-2 px-3 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'earnings'
+                  ? 'bg-white text-green-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              💰 Earnings
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`flex-1 py-2 px-3 rounded-xl font-medium text-sm transition-all ${
+                activeTab === 'history'
+                  ? 'bg-white text-purple-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              📊 History
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+
+          {/* Invite Tab */}
+          {activeTab === 'invite' && (
+            <>
+              {/* Referral Code Section */}
+              <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl p-6 text-white space-y-4">
+                <div className="text-center">
+                  <h3 className="text-lg font-bold">Your Referral Code</h3>
+                  <p className="text-sm opacity-90">Share with friends to earn money</p>
+                </div>
+                
+                <div className="bg-white/20 backdrop-blur rounded-xl p-4 text-center">
+                  <p className="text-2xl font-bold tracking-wider">{userCode}</p>
+                </div>
+
+                <button
+                  onClick={handleCopyCode}
+                  className="w-full py-3 bg-white/20 backdrop-blur rounded-xl font-medium transition-all hover:bg-white/30 active:scale-95"
+                >
+                  {copiedCode ? '✅ Copied!' : '📋 Copy Code'}
+                </button>
+              </div>
+
+              {/* Earnings Preview */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-green-50 rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-green-600">₹{referralEarnings}</p>
+                  <p className="text-xs text-green-700">Total Earned</p>
+                </div>
+                <div className="bg-blue-50 rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-blue-600">{totalReferrals}</p>
+                  <p className="text-xs text-blue-700">Friends Joined</p>
+                </div>
+              </div>
+
+              {/* How It Works */}
+              <div className="bg-yellow-50 rounded-2xl p-4 space-y-3">
+                <h4 className="font-bold text-yellow-800">💡 How It Works</h4>
+                <div className="space-y-2 text-sm text-yellow-700">
+                  <div className="flex items-start space-x-2">
+                    <span>1️⃣</span>
+                    <p>Share your code with friends</p>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <span>2️⃣</span>
+                    <p>Friend signs up and plays 1 game</p>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <span>3️⃣</span>
+                    <p>You earn ₹25, they get ₹10 bonus!</p>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <span>🔥</span>
+                    <p><strong>Bonus:</strong> Earn ₹10 when their friends join too!</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Popular Share Options */}
+              <div className="space-y-3">
+                <h4 className="font-medium text-gray-800">🚀 Share with Friends</h4>
+                <div className="grid grid-cols-3 gap-2">
+                  {socialButtons.filter(btn => btn.popular).map((button) => (
+                    <button
+                      key={button.id}
+                      onClick={() => handleShare(button.id)}
+                      className={`bg-gradient-to-r ${button.color} p-3 rounded-xl text-white text-center hover:scale-105 active:scale-95 transition-all shadow-lg`}
+                    >
+                      <div className="text-2xl mb-1">{button.icon}</div>
+                      <p className="text-xs font-medium">{button.name}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* More Share Options */}
+              <div className="space-y-2">
+                <h4 className="font-medium text-gray-800 text-sm">More Options</h4>
+                <div className="grid grid-cols-3 gap-2">
+                  {socialButtons.filter(btn => !btn.popular).map((button) => (
+                    <button
+                      key={button.id}
+                      onClick={() => handleShare(button.id)}
+                      className={`bg-gradient-to-r ${button.color} p-2 rounded-lg text-white text-center hover:scale-105 active:scale-95 transition-all`}
+                    >
+                      <div className="text-lg">{button.icon}</div>
+                      <p className="text-xs font-medium">{button.name}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Share More Button */}
+              <button
+                onClick={() => handleShare('more')}
+                className="w-full py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-xl font-medium hover:from-gray-700 hover:to-gray-800 transition-all active:scale-95"
+              >
+                📤 Share More Ways
+              </button>
+            </>
+          )}
+
+          {/* Earnings Tab */}
+          {activeTab === 'earnings' && (
+            <>
+              {/* Total Earnings Card */}
+              <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl p-6 text-white">
+                <div className="text-center space-y-2">
+                  <h3 className="text-lg font-bold">Total Referral Earnings</h3>
+                  <p className="text-3xl font-bold">₹{referralStats.totalEarnings}</p>
+                  <p className="text-sm opacity-90">Lifetime earnings from referrals</p>
+                </div>
+              </div>
+
+              {/* Earnings Breakdown */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-blue-50 rounded-xl p-4 text-center">
+                  <p className="text-xl font-bold text-blue-600">₹{referralStats.thisMonth}</p>
+                  <p className="text-sm text-blue-700">This Month</p>
+                </div>
+                <div className="bg-orange-50 rounded-xl p-4 text-center">
+                  <p className="text-xl font-bold text-orange-600">₹{referralStats.pending}</p>
+                  <p className="text-sm text-orange-700">Pending</p>
+                </div>
+              </div>
+
+              {/* Referral Levels */}
+              <div className="space-y-3">
+                <h4 className="font-medium text-gray-800">👥 Your Network</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-xl">🥇</span>
+                      <div>
+                        <p className="font-medium text-green-800">Level 1 Friends</p>
+                        <p className="text-sm text-green-600">₹25 per referral</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-green-800">{referralStats.level1Count}</p>
+                      <p className="text-sm text-green-600">friends</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-xl">🥈</span>
+                      <div>
+                        <p className="font-medium text-blue-800">Level 2 Friends</p>
+                        <p className="text-sm text-blue-600">₹10 per referral</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-blue-800">{referralStats.level2Count}</p>
+                      <p className="text-sm text-blue-600">friends</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Earning Tips */}
+              <div className="bg-purple-50 rounded-2xl p-4 space-y-2">
+                <h4 className="font-bold text-purple-800">💡 Maximize Earnings</h4>
+                <div className="space-y-1 text-sm text-purple-700">
+                  <p>• Share on social media for wider reach</p>
+                  <p>• Invite active gamers for higher conversion</p>
+                  <p>• Explain the games to increase signup rates</p>
+                  <p>• Follow up with friends who haven't joined</p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* History Tab */}
+          {activeTab === 'history' && (
+            <>
+              {/* Monthly Summary */}
+              <div className="bg-gradient-to-r from-purple-500 to-pink-600 rounded-2xl p-4 text-white">
+                <h3 className="font-bold text-center">January 2024 Summary</h3>
+                <div className="grid grid-cols-3 gap-4 mt-3 text-center">
+                  <div>
+                    <p className="text-xl font-bold">8</p>
+                    <p className="text-xs opacity-90">New Friends</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold">₹170</p>
+                    <p className="text-xs opacity-90">Earned</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold">₹25</p>
+                    <p className="text-xs opacity-90">Pending</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Earnings History */}
+              <div className="space-y-3">
+                <h4 className="font-medium text-gray-800">📊 Recent Activity</h4>
+                <div className="space-y-2">
+                  {earningsHistory.map((item, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-2 h-2 rounded-full ${
+                          item.status === 'paid' ? 'bg-green-500' : 'bg-yellow-500'
+                        }`}></div>
+                        <div>
+                          <p className="font-medium text-gray-800 text-sm">{item.friend}</p>
+                          <p className="text-xs text-gray-600">{item.type}</p>
+                          <p className="text-xs text-gray-500">{item.date}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-bold ${
+                          item.status === 'paid' ? 'text-green-600' : 'text-yellow-600'
+                        }`}>₹{item.amount}</p>
+                        <p className={`text-xs ${
+                          item.status === 'paid' ? 'text-green-500' : 'text-yellow-500'
+                        }`}>{item.status}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Payout Schedule */}
+              <div className="bg-blue-50 rounded-2xl p-4">
+                <h4 className="font-bold text-blue-800 mb-2">💳 Payout Information</h4>
+                <div className="space-y-1 text-sm text-blue-700">
+                  <p>• Earnings are paid every Sunday</p>
+                  <p>• Minimum payout: ₹100</p>
+                  <p>• Pending earnings will be processed next cycle</p>
+                  <p>• Payments made via UPI or Bank transfer</p>
+                </div>
+              </div>
+            </>
+          )}
+
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+export default ReferralSystem

@@ -1,0 +1,338 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import type { FC } from 'react'
+
+interface Transaction {
+  id: string
+  type: 'deposit' | 'withdrawal' | 'bet' | 'win' | 'loss' | 'bonus' | 'referral'
+  amount: number
+  status: 'pending' | 'completed' | 'failed' | 'processing'
+  description: string
+  timestamp: string
+  gameType?: string
+  opponentName?: string
+  transactionId?: string
+  method?: string
+}
+
+interface TransactionHistoryProps {
+  isOpen: boolean
+  onClose: () => void
+  transactions: Transaction[]
+  currentBalance: number
+  totalDeposits: number
+  totalWithdrawals: number
+  totalWinnings: number
+}
+
+const TransactionHistory: FC<TransactionHistoryProps> = ({
+  isOpen,
+  onClose,
+  transactions,
+  currentBalance,
+  totalDeposits,
+  totalWithdrawals,
+  totalWinnings
+}) => {
+  const [activeFilter, setActiveFilter] = useState<'all' | 'deposits' | 'withdrawals' | 'games' | 'bonuses'>('all')
+  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>(transactions)
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
+
+  useEffect(() => {
+    let filtered = [...transactions]
+
+    // Apply filter
+    switch (activeFilter) {
+      case 'deposits':
+        filtered = filtered.filter(t => t.type === 'deposit')
+        break
+      case 'withdrawals':
+        filtered = filtered.filter(t => t.type === 'withdrawal')
+        break
+      case 'games':
+        filtered = filtered.filter(t => ['bet', 'win', 'loss'].includes(t.type))
+        break
+      case 'bonuses':
+        filtered = filtered.filter(t => ['bonus', 'referral'].includes(t.type))
+        break
+      default:
+        // 'all' - no filtering
+        break
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.timestamp).getTime()
+      const dateB = new Date(b.timestamp).getTime()
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB
+    })
+
+    setFilteredTransactions(filtered)
+  }, [transactions, activeFilter, sortOrder])
+
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    if (date.toDateString() === today.toDateString()) {
+      return `Today ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return `Yesterday ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    } else {
+      return date.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    }
+  }
+
+  const getTransactionIcon = (type: Transaction['type']): string => {
+    switch (type) {
+      case 'deposit': return '💰'
+      case 'withdrawal': return '💸'
+      case 'bet': return '🎮'
+      case 'win': return '🏆'
+      case 'loss': return '😞'
+      case 'bonus': return '🎁'
+      case 'referral': return '👥'
+      default: return '💳'
+    }
+  }
+
+  const getTransactionColor = (type: Transaction['type'], status: Transaction['status']): string => {
+    if (status === 'failed') return 'text-red-600'
+    if (status === 'pending' || status === 'processing') return 'text-yellow-600'
+    
+    switch (type) {
+      case 'deposit':
+      case 'win':
+      case 'bonus':
+      case 'referral':
+        return 'text-green-600'
+      case 'withdrawal':
+      case 'bet':
+      case 'loss':
+        return 'text-red-600'
+      default:
+        return 'text-gray-600'
+    }
+  }
+
+  const getAmountPrefix = (type: Transaction['type']): string => {
+    switch (type) {
+      case 'deposit':
+      case 'win':
+      case 'bonus':
+      case 'referral':
+        return '+'
+      case 'withdrawal':
+      case 'bet':
+      case 'loss':
+        return '-'
+      default:
+        return ''
+    }
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-hidden">
+        
+        {/* Header */}
+        <div className="sticky top-0 bg-white rounded-t-3xl border-b p-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-800">Transaction History</h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="p-4 space-y-3">
+          {/* Current Balance */}
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-4 text-white">
+            <div className="text-center">
+              <p className="text-sm opacity-90">Current Balance</p>
+              <p className="text-2xl font-bold">₹{currentBalance}</p>
+            </div>
+          </div>
+
+          {/* Quick Stats */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-blue-50 rounded-xl p-3 text-center">
+              <p className="text-sm text-blue-600 font-medium">Deposits</p>
+              <p className="text-lg font-bold text-blue-800">₹{totalDeposits}</p>
+            </div>
+            <div className="bg-red-50 rounded-xl p-3 text-center">
+              <p className="text-sm text-red-600 font-medium">Withdrawals</p>
+              <p className="text-lg font-bold text-red-800">₹{totalWithdrawals}</p>
+            </div>
+            <div className="bg-green-50 rounded-xl p-3 text-center">
+              <p className="text-sm text-green-600 font-medium">Winnings</p>
+              <p className="text-lg font-bold text-green-800">₹{totalWinnings}</p>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="bg-gray-100 rounded-2xl p-1">
+            <div className="grid grid-cols-5 gap-1">
+              {[
+                { id: 'all', name: 'All', count: transactions.length },
+                { id: 'deposits', name: 'Add', count: transactions.filter(t => t.type === 'deposit').length },
+                { id: 'withdrawals', name: 'Out', count: transactions.filter(t => t.type === 'withdrawal').length },
+                { id: 'games', name: 'Game', count: transactions.filter(t => ['bet', 'win', 'loss'].includes(t.type)).length },
+                { id: 'bonuses', name: 'Bonus', count: transactions.filter(t => ['bonus', 'referral'].includes(t.type)).length }
+              ].map((filter) => (
+                <button
+                  key={filter.id}
+                  onClick={() => setActiveFilter(filter.id as any)}
+                  className={`py-2 px-1 rounded-xl text-xs font-medium transition-all ${
+                    activeFilter === filter.id
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  <div>{filter.name}</div>
+                  <div className="text-xs opacity-75">({filter.count})</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Sort Toggle */}
+          <div className="flex justify-between items-center">
+            <h3 className="font-medium text-gray-800">
+              {filteredTransactions.length} Transaction{filteredTransactions.length !== 1 ? 's' : ''}
+            </h3>
+            <button
+              onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+              className="text-sm text-blue-600 font-medium hover:text-blue-700 transition-colors"
+            >
+              {sortOrder === 'newest' ? '📅 Newest First' : '📅 Oldest First'}
+            </button>
+          </div>
+        </div>
+
+        {/* Transaction List */}
+        <div className="overflow-y-auto max-h-[50vh]">
+          {filteredTransactions.length > 0 ? (
+            <div className="space-y-2 p-4 pt-0">
+              {filteredTransactions.map((transaction) => (
+                <div
+                  key={transaction.id}
+                  className="bg-gray-50 rounded-2xl p-4 hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="text-2xl">{getTransactionIcon(transaction.type)}</div>
+                      <div>
+                        <p className="font-medium text-gray-800 text-sm">
+                          {transaction.description}
+                        </p>
+                        {transaction.gameType && (
+                          <p className="text-xs text-gray-500">
+                            {transaction.gameType}
+                            {transaction.opponentName && ` vs ${transaction.opponentName}`}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500">
+                          {formatDate(transaction.timestamp)}
+                        </p>
+                        {transaction.transactionId && (
+                          <p className="text-xs text-gray-400">
+                            ID: {transaction.transactionId}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="text-right">
+                      <p className={`font-bold ${getTransactionColor(transaction.type, transaction.status)}`}>
+                        {getAmountPrefix(transaction.type)}₹{transaction.amount}
+                      </p>
+                      <div className="flex items-center space-x-1">
+                        <div className={`w-2 h-2 rounded-full ${
+                          transaction.status === 'completed' ? 'bg-green-500' :
+                          transaction.status === 'pending' ? 'bg-yellow-500' :
+                          transaction.status === 'processing' ? 'bg-blue-500' :
+                          'bg-red-500'
+                        }`}></div>
+                        <p className={`text-xs font-medium ${
+                          transaction.status === 'completed' ? 'text-green-600' :
+                          transaction.status === 'pending' ? 'text-yellow-600' :
+                          transaction.status === 'processing' ? 'text-blue-600' :
+                          'text-red-600'
+                        }`}>
+                          {transaction.status === 'completed' ? 'Success' :
+                           transaction.status === 'pending' ? 'Pending' :
+                           transaction.status === 'processing' ? 'Processing' :
+                           'Failed'}
+                        </p>
+                      </div>
+                      {transaction.method && (
+                        <p className="text-xs text-gray-500">
+                          via {transaction.method}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center">
+              <div className="text-4xl mb-4">📋</div>
+              <h3 className="text-lg font-bold text-gray-800 mb-2">No Transactions Found</h3>
+              <p className="text-gray-600 text-sm">
+                {activeFilter === 'all' 
+                  ? 'Start playing to see your transaction history'
+                  : `No ${activeFilter} transactions yet`
+                }
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Summary */}
+        {filteredTransactions.length > 0 && (
+          <div className="border-t p-4">
+            <div className="bg-gray-50 rounded-2xl p-4">
+              <h4 className="font-bold text-gray-800 mb-2 text-sm">📊 Summary</h4>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-gray-600">Total In:</p>
+                  <p className="font-bold text-green-600">
+                    +₹{filteredTransactions
+                      .filter(t => ['deposit', 'win', 'bonus', 'referral'].includes(t.type) && t.status === 'completed')
+                      .reduce((sum, t) => sum + t.amount, 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Total Out:</p>
+                  <p className="font-bold text-red-600">
+                    -₹{filteredTransactions
+                      .filter(t => ['withdrawal', 'bet', 'loss'].includes(t.type) && t.status === 'completed')
+                      .reduce((sum, t) => sum + t.amount, 0)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
+
+export default TransactionHistory

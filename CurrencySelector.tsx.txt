@@ -1,0 +1,118 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useMultiCurrency } from '../hooks/useMultiCurrency';
+import { useLanguage } from '../hooks/useLanguageSystem';
+
+interface CurrencySelectorProps {
+  className?: string;
+  showFlags?: boolean;
+  compact?: boolean;
+}
+
+const CurrencySelector: React.FC<CurrencySelectorProps> = ({ 
+  className = '', 
+  showFlags = true, 
+  compact = false 
+}) => {
+  const { 
+    currentCurrency, 
+    setCurrency, 
+    availableCurrencies, 
+    formatAmount 
+  } = useMultiCurrency();
+  const { t } = useLanguage();
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+
+  const currentCurr = availableCurrencies.find(curr => curr.code === currentCurrency);
+
+  const handleCurrencySelect = (currCode: string): void => {
+    setCurrency(currCode);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className={`relative inline-block ${className}`}>
+      {/* Currency Selector Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`
+          flex items-center gap-2 px-3 py-2 rounded-lg
+          bg-white/10 hover:bg-white/20 transition-all duration-200
+          text-white border border-white/20 hover:border-white/40
+          ${compact ? 'text-sm' : 'text-base'}
+        `}
+      >
+        {showFlags && currentCurr && (
+          <span className="text-lg">{currentCurr.flag}</span>
+        )}
+        <span className={compact ? 'hidden sm:block' : ''}>
+          {compact ? currentCurr?.code : `${currentCurr?.symbol} ${currentCurr?.code}`}
+        </span>
+        <svg 
+          className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Currency Dropdown */}
+      {isOpen && (
+        <>
+          {/* Overlay */}
+          <div 
+            className="fixed inset-0 z-10" 
+            onClick={() => setIsOpen(false)}
+          />
+          
+          {/* Dropdown Menu */}
+          <div className="absolute top-full mt-2 left-0 z-20 bg-gray-900/95 backdrop-blur-sm rounded-xl border border-white/20 shadow-2xl min-w-[280px] max-h-80 overflow-y-auto">
+            <div className="p-2">
+              <h3 className="text-xs font-medium text-gray-400 mb-2 px-2">
+                Select Currency
+              </h3>
+              
+              {availableCurrencies.map((curr) => (
+                <button
+                  key={curr.code}
+                  onClick={() => handleCurrencySelect(curr.code)}
+                  className={`
+                    w-full flex items-center gap-3 px-3 py-3 rounded-lg
+                    hover:bg-white/10 transition-colors text-left
+                    ${curr.code === currentCurrency ? 'bg-green-500/20 text-green-300' : 'text-white'}
+                  `}
+                >
+                  {showFlags && (
+                    <span className="text-xl">{curr.flag}</span>
+                  )}
+                  <div className="flex-1">
+                    <div className="font-medium flex items-center gap-2">
+                      <span className="text-lg">{curr.symbol}</span>
+                      <span>{curr.code}</span>
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      {curr.name} • {curr.country}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Sample: {formatAmount(10)} (₹10 bet)
+                    </div>
+                  </div>
+                  {curr.code === currentCurrency && (
+                    <svg className="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default CurrencySelector;

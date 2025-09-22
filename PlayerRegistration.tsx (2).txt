@@ -1,0 +1,75 @@
+'use client';
+
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+
+interface PlayerRegistrationProps {
+  onRegister: (username: string) => void;
+  isConnected: boolean;
+}
+
+export function PlayerRegistration({ onRegister, isConnected }: PlayerRegistrationProps) {
+  const [username, setUsername] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim() || !isConnected || isRegistering) return;
+
+    setIsRegistering(true);
+    try {
+      onRegister(username.trim());
+      // Don't reset form immediately - let the parent handle success
+    } catch (error) {
+      console.error('Registration failed:', error);
+      setIsRegistering(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Welcome to Skillzy Arena
+          </CardTitle>
+          <CardDescription>
+            Choose your username to start earning through skillful gameplay
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                type="text"
+                placeholder="Enter your username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={!isConnected || isRegistering}
+                maxLength={20}
+                className="text-center"
+              />
+            </div>
+            <Button 
+              type="submit" 
+              className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+              disabled={!username.trim() || !isConnected || isRegistering}
+            >
+              {isRegistering ? 'Joining Arena...' : 'Join Arena'}
+            </Button>
+          </form>
+          {!isConnected && (
+            <p className="text-sm text-muted-foreground text-center mt-4">
+              Connecting to game servers...
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -1,0 +1,578 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useMultiCurrency } from '../hooks/useMultiCurrency';
+import { useLanguage } from '../hooks/useLanguageSystem';
+
+interface PaymentGateway {
+  id: string;
+  name: string;
+  logo: string;
+  description: string;
+  fees: string;
+  processingTime: string;
+  countries: string[];
+  currencies: string[];
+  methods: string[];
+}
+
+// Comprehensive payment gateways for different countries
+const paymentGateways: PaymentGateway[] = [
+  // India
+  {
+    id: 'razorpay',
+    name: 'Razorpay',
+    logo: '🇮🇳',
+    description: 'India\'s leading payment gateway',
+    fees: '2% + ₹3',
+    processingTime: 'Instant',
+    countries: ['India'],
+    currencies: ['INR'],
+    methods: ['UPI', 'NetBanking', 'Cards', 'Wallets']
+  },
+  {
+    id: 'paytm',
+    name: 'Paytm Payments',
+    logo: '💙',
+    description: 'Paytm payment gateway',
+    fees: '1.99%',
+    processingTime: 'Instant',
+    countries: ['India'],
+    currencies: ['INR'],
+    methods: ['Paytm Wallet', 'UPI', 'Cards']
+  },
+
+  // United States
+  {
+    id: 'stripe_us',
+    name: 'Stripe',
+    logo: '💳',
+    description: 'Global payment platform',
+    fees: '2.9% + $0.30',
+    processingTime: 'Instant',
+    countries: ['United States', 'Canada'],
+    currencies: ['USD', 'CAD'],
+    methods: ['Credit Cards', 'Debit Cards', 'ACH', 'Apple Pay']
+  },
+  {
+    id: 'paypal_us',
+    name: 'PayPal',
+    logo: '🅿️',
+    description: 'Secure PayPal payments',
+    fees: '3.49% + $0.49',
+    processingTime: 'Instant',
+    countries: ['United States', 'Canada', 'United Kingdom'],
+    currencies: ['USD', 'CAD', 'GBP'],
+    methods: ['PayPal Balance', 'Bank Transfer', 'Cards']
+  },
+
+  // United Kingdom
+  {
+    id: 'stripe_uk',
+    name: 'Stripe UK',
+    logo: '🇬🇧',
+    description: 'UK Stripe payments',
+    fees: '2.4% + £0.20',
+    processingTime: 'Instant',
+    countries: ['United Kingdom'],
+    currencies: ['GBP'],
+    methods: ['Credit Cards', 'Debit Cards', 'Bank Transfer']
+  },
+  {
+    id: 'gocardless',
+    name: 'GoCardless',
+    logo: '💷',
+    description: 'UK direct debit specialist',
+    fees: '1% + £0.20',
+    processingTime: '3-5 business days',
+    countries: ['United Kingdom'],
+    currencies: ['GBP'],
+    methods: ['Direct Debit', 'Bank Transfer']
+  },
+
+  // European Union
+  {
+    id: 'stripe_eu',
+    name: 'Stripe Europe',
+    logo: '🇪🇺',
+    description: 'European payment processing',
+    fees: '2.4% + €0.25',
+    processingTime: 'Instant',
+    countries: ['Germany', 'France', 'Netherlands', 'Spain', 'Italy'],
+    currencies: ['EUR'],
+    methods: ['Credit Cards', 'Debit Cards', 'SEPA', 'iDEAL']
+  },
+  {
+    id: 'klarna',
+    name: 'Klarna',
+    logo: '🦄',
+    description: 'European payment solutions',
+    fees: '3.29%',
+    processingTime: 'Instant',
+    countries: ['Germany', 'Netherlands', 'Sweden', 'Norway'],
+    currencies: ['EUR'],
+    methods: ['Pay Later', 'Installments', 'Bank Transfer']
+  },
+
+  // China
+  {
+    id: 'alipay',
+    name: 'Alipay',
+    logo: '🅰️',
+    description: 'China\'s leading mobile payment',
+    fees: '1.2%',
+    processingTime: 'Instant',
+    countries: ['China'],
+    currencies: ['CNY'],
+    methods: ['Alipay Wallet', 'Bank Cards']
+  },
+  {
+    id: 'wechat_pay',
+    name: 'WeChat Pay',
+    logo: '💬',
+    description: 'WeChat integrated payment',
+    fees: '1.2%',
+    processingTime: 'Instant',
+    countries: ['China'],
+    currencies: ['CNY'],
+    methods: ['WeChat Wallet', 'QR Code']
+  },
+
+  // Japan
+  {
+    id: 'stripe_jp',
+    name: 'Stripe Japan',
+    logo: '🇯🇵',
+    description: 'Japanese payment processing',
+    fees: '3.6%',
+    processingTime: 'Instant',
+    countries: ['Japan'],
+    currencies: ['JPY'],
+    methods: ['Credit Cards', 'Convenience Store', 'Bank Transfer']
+  },
+  {
+    id: 'paypay',
+    name: 'PayPay',
+    logo: '⚡',
+    description: 'Japan\'s popular mobile payment',
+    fees: '2.5%',
+    processingTime: 'Instant',
+    countries: ['Japan'],
+    currencies: ['JPY'],
+    methods: ['PayPay Balance', 'Bank Transfer']
+  },
+
+  // South Korea
+  {
+    id: 'kakao_pay',
+    name: 'KakaoPay',
+    logo: '🟡',
+    description: 'Korea\'s leading mobile payment',
+    fees: '2.8%',
+    processingTime: 'Instant',
+    countries: ['South Korea'],
+    currencies: ['KRW'],
+    methods: ['KakaoTalk Wallet', 'Bank Cards']
+  },
+  {
+    id: 'naver_pay',
+    name: 'NAVER Pay',
+    logo: '🟢',
+    description: 'NAVER integrated payment',
+    fees: '2.5%',
+    processingTime: 'Instant',
+    countries: ['South Korea'],
+    currencies: ['KRW'],
+    methods: ['NAVER Wallet', 'Credit Cards']
+  },
+
+  // Brazil
+  {
+    id: 'pix',
+    name: 'PIX',
+    logo: '🔥',
+    description: 'Brazil\'s instant payment system',
+    fees: 'R$0.50',
+    processingTime: 'Instant',
+    countries: ['Brazil'],
+    currencies: ['BRL'],
+    methods: ['PIX Transfer', 'QR Code']
+  },
+  {
+    id: 'pagseguro',
+    name: 'PagSeguro',
+    logo: '💚',
+    description: 'Brazilian payment gateway',
+    fees: '4.99%',
+    processingTime: 'Instant',
+    countries: ['Brazil'],
+    currencies: ['BRL'],
+    methods: ['Credit Cards', 'PIX', 'Bank Transfer']
+  },
+
+  // Russia
+  {
+    id: 'yandex_money',
+    name: 'YooMoney',
+    logo: '🟡',
+    description: 'Russian digital payment service',
+    fees: '3% + ₽15',
+    processingTime: 'Instant',
+    countries: ['Russia'],
+    currencies: ['RUB'],
+    methods: ['YooMoney Wallet', 'Bank Cards', 'SBP']
+  },
+  {
+    id: 'qiwi',
+    name: 'QIWI',
+    logo: '🥝',
+    description: 'Russian payment system',
+    fees: '2.99%',
+    processingTime: 'Instant',
+    countries: ['Russia'],
+    currencies: ['RUB'],
+    methods: ['QIWI Wallet', 'Bank Transfer']
+  },
+
+  // Middle East
+  {
+    id: 'payfort',
+    name: 'PayFort (Amazon)',
+    logo: '🏛️',
+    description: 'Middle East payment gateway',
+    fees: '2.85%',
+    processingTime: 'Instant',
+    countries: ['UAE', 'Saudi Arabia', 'Egypt', 'Jordan'],
+    currencies: ['AED', 'SAR'],
+    methods: ['Credit Cards', 'Debit Cards', 'SADAD']
+  },
+
+  // Australia
+  {
+    id: 'stripe_au',
+    name: 'Stripe Australia',
+    logo: '🇦🇺',
+    description: 'Australian payment processing',
+    fees: '2.9% + A$0.30',
+    processingTime: 'Instant',
+    countries: ['Australia'],
+    currencies: ['AUD'],
+    methods: ['Credit Cards', 'BPAY', 'Bank Transfer']
+  }
+];
+
+interface CountrySpecificPaymentsProps {
+  isDeposit: boolean;
+  amount: number;
+  onComplete: (transaction: any) => void;
+  onCancel: () => void;
+}
+
+const CountrySpecificPayments: React.FC<CountrySpecificPaymentsProps> = ({
+  isDeposit,
+  amount,
+  onComplete,
+  onCancel
+}) => {
+  const { currentCurrency, getCurrentCurrencyInfo, formatAmount } = useMultiCurrency();
+  const { t, currentLanguage } = useLanguage();
+  const [selectedGateway, setSelectedGateway] = useState<string>('');
+  const [selectedMethod, setSelectedMethod] = useState<string>('');
+  const [paymentDetails, setPaymentDetails] = useState<Record<string, string>>({});
+  const [step, setStep] = useState<'select-gateway' | 'select-method' | 'enter-details' | 'processing'>('select-gateway');
+
+  const currencyInfo = getCurrentCurrencyInfo();
+  
+  // Filter gateways based on current currency and country
+  const availableGateways = paymentGateways.filter(gateway => 
+    gateway.currencies.includes(currentCurrency) ||
+    gateway.countries.includes(currencyInfo.country)
+  );
+
+  const selectedGatewayConfig = availableGateways.find(g => g.id === selectedGateway);
+
+  const handleGatewaySelect = (gatewayId: string): void => {
+    setSelectedGateway(gatewayId);
+    setStep('select-method');
+  };
+
+  const handleMethodSelect = (method: string): void => {
+    setSelectedMethod(method);
+    setStep('enter-details');
+  };
+
+  const renderPaymentForm = (): React.ReactNode => {
+    if (!selectedGatewayConfig) return null;
+
+    // Custom forms based on gateway and method
+    switch (selectedGateway) {
+      case 'razorpay':
+      case 'paytm':
+        if (selectedMethod.includes('UPI')) {
+          return (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">UPI ID</label>
+                <input
+                  type="text"
+                  placeholder="yourname@paytm"
+                  className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                  onChange={(e) => setPaymentDetails({...paymentDetails, upiId: e.target.value})}
+                />
+              </div>
+            </div>
+          );
+        }
+        break;
+
+      case 'alipay':
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Alipay Account</label>
+              <input
+                type="text"
+                placeholder="example@alipay.com"
+                className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                onChange={(e) => setPaymentDetails({...paymentDetails, alipayAccount: e.target.value})}
+              />
+            </div>
+          </div>
+        );
+
+      case 'wechat_pay':
+        return (
+          <div className="text-center py-8">
+            <div className="w-32 h-32 bg-gray-800 rounded-lg mx-auto mb-4 flex items-center justify-center">
+              <span className="text-4xl">📱</span>
+            </div>
+            <p className="text-gray-300">Scan QR code with WeChat to pay</p>
+          </div>
+        );
+
+      case 'pix':
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">PIX Key</label>
+              <input
+                type="text"
+                placeholder="CPF, Email, or Phone"
+                className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                onChange={(e) => setPaymentDetails({...paymentDetails, pixKey: e.target.value})}
+              />
+            </div>
+          </div>
+        );
+
+      default:
+        // Generic card form for most other gateways
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Card Number</label>
+              <input
+                type="text"
+                placeholder="1234 5678 9012 3456"
+                className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                onChange={(e) => setPaymentDetails({...paymentDetails, cardNumber: e.target.value})}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Expiry</label>
+                <input
+                  type="text"
+                  placeholder="MM/YY"
+                  className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                  onChange={(e) => setPaymentDetails({...paymentDetails, expiry: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">CVV</label>
+                <input
+                  type="text"
+                  placeholder="123"
+                  className="w-full p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-white"
+                  onChange={(e) => setPaymentDetails({...paymentDetails, cvv: e.target.value})}
+                />
+              </div>
+            </div>
+          </div>
+        );
+    }
+  };
+
+  const handleProcessPayment = async (): Promise<void> => {
+    setStep('processing');
+    
+    // Simulate payment processing
+    setTimeout(() => {
+      const transaction = {
+        id: `txn_${Date.now()}`,
+        type: isDeposit ? 'deposit' : 'withdrawal',
+        amount,
+        currency: currentCurrency,
+        gateway: selectedGateway,
+        method: selectedMethod,
+        status: 'completed',
+        timestamp: new Date().toISOString()
+      };
+      
+      onComplete(transaction);
+    }, 3000);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900/95 backdrop-blur rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto border border-gray-700">
+        {/* Header */}
+        <div className="p-6 border-b border-gray-700">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-white">
+              {isDeposit ? 'Add Money' : 'Withdraw Money'}
+            </h2>
+            <button
+              onClick={onCancel}
+              className="text-gray-400 hover:text-white"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <div className="mt-3 p-3 bg-blue-500/20 rounded-lg">
+            <div className="flex items-center gap-2 text-blue-300">
+              <span className="text-lg">{currencyInfo.flag}</span>
+              <span className="font-medium">{formatAmount(amount)}</span>
+              <span className="text-blue-400">• {currencyInfo.country}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {step === 'select-gateway' && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-white mb-4">
+                Choose Payment Gateway
+              </h3>
+              
+              {availableGateways.map((gateway) => (
+                <button
+                  key={gateway.id}
+                  onClick={() => handleGatewaySelect(gateway.id)}
+                  className="w-full p-4 rounded-xl bg-gray-800/50 hover:bg-gray-800/80 border border-gray-600 hover:border-blue-500 transition-all text-left"
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="text-3xl">{gateway.logo}</span>
+                    <div className="flex-1">
+                      <div className="font-medium text-white">{gateway.name}</div>
+                      <div className="text-sm text-gray-400">{gateway.description}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {gateway.processingTime} • {gateway.fees}
+                      </div>
+                      <div className="text-xs text-blue-400 mt-1">
+                        {gateway.methods.slice(0, 3).join(', ')}
+                        {gateway.methods.length > 3 && ` +${gateway.methods.length - 3} more`}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 'select-method' && selectedGatewayConfig && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-2xl">{selectedGatewayConfig.logo}</span>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">{selectedGatewayConfig.name}</h3>
+                  <p className="text-sm text-gray-400">{selectedGatewayConfig.description}</p>
+                </div>
+              </div>
+
+              <h4 className="text-md font-semibold text-white mb-3">Select Payment Method</h4>
+              
+              {selectedGatewayConfig.methods.map((method) => (
+                <button
+                  key={method}
+                  onClick={() => handleMethodSelect(method)}
+                  className="w-full p-3 rounded-lg bg-gray-800/50 hover:bg-gray-800/80 border border-gray-600 hover:border-blue-500 transition-all text-left"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-white font-medium">{method}</span>
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 'enter-details' && selectedGatewayConfig && (
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-2xl">{selectedGatewayConfig.logo}</span>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">{selectedMethod}</h3>
+                  <p className="text-sm text-gray-400">via {selectedGatewayConfig.name}</p>
+                </div>
+              </div>
+
+              {renderPaymentForm()}
+
+              <div className="bg-gray-800/50 rounded-lg p-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Amount:</span>
+                  <span className="text-white">{formatAmount(amount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Fees:</span>
+                  <span className="text-white">{selectedGatewayConfig.fees}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Processing:</span>
+                  <span className="text-white">{selectedGatewayConfig.processingTime}</span>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep('select-method')}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg text-white font-medium transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleProcessPayment}
+                  className="flex-1 bg-green-600 hover:bg-green-700 px-6 py-3 rounded-lg text-white font-medium transition-colors"
+                >
+                  Pay {formatAmount(amount)}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 'processing' && (
+            <div className="text-center py-8">
+              <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+              <h3 className="text-lg font-semibold text-white mb-2">Processing Payment...</h3>
+              <p className="text-gray-400">
+                Processing via {selectedGatewayConfig?.name}
+              </p>
+              <div className="mt-4 text-sm text-gray-500">
+                This usually takes {selectedGatewayConfig?.processingTime.toLowerCase()}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CountrySpecificPayments;

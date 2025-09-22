@@ -1,0 +1,690 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader } from './ui/card';
+import { Badge } from './ui/badge';
+import { Avatar, AvatarFallback } from './ui/avatar';
+import { Progress } from './ui/progress';
+import { 
+  Trophy, Users, Zap, Crown, Wallet, Gift, 
+  Plus, ArrowRight, Star, Target, Clock,
+  Wifi, WifiOff, RotateCcw, ChevronRight,
+  TrendingUp, Award, Gamepad2
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+interface PlayerProfile {
+  identity: { toHexString: () => string };
+  username: string;
+  totalGamesPlayed: number;
+  totalWins: number;
+  totalEarningsCents: number;
+  createdAt: { toDate: () => Date };
+  lastActive: { toDate: () => Date };
+}
+
+interface PlayerWallet {
+  balanceCents: number;
+  pendingBetsCents: number;
+  totalDepositedCents: number;
+  totalWithdrawnCents: number;
+}
+
+interface DeveloperEarnings {
+  totalEarningsCents: number;
+  totalBetsCents: number;
+  totalMatches: number;
+  commissionRate: number;
+}
+
+interface MPLGamingHubProps {
+  playerProfile: PlayerProfile;
+  playerWallet: PlayerWallet;
+  developerEarnings?: DeveloperEarnings | null;
+  networkQuality: 'excellent' | 'good' | 'poor' | 'offline';
+  offlineMode: boolean;
+  pendingActions: any[];
+  onFindMatch: (gameType: string, betAmount: number) => Promise<void>;
+  onDeposit: (amount: number) => Promise<void>;
+  onWithdraw: (amount: number) => Promise<void>;
+  onForceSync: () => Promise<void>;
+}
+
+type GameType = 'Chess' | 'SnakeLadder' | 'Carrom';
+
+interface GameInfo {
+  id: GameType;
+  name: string;
+  icon: string;
+  description: string;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  minBet: number;
+  maxBet: number;
+  avgDuration: string;
+  players: number;
+  gradient: string;
+  textColor: string;
+}
+
+const GAMES: GameInfo[] = [
+  {
+    id: 'Chess',
+    name: 'Chess Master',
+    icon: '♔',
+    description: 'Strategic battles with grandmaster moves',
+    difficulty: 'Hard',
+    minBet: 10,
+    maxBet: 500,
+    avgDuration: '5-8 min',
+    players: 1248,
+    gradient: 'from-amber-600 to-yellow-500',
+    textColor: 'text-amber-100'
+  },
+  {
+    id: 'SnakeLadder',
+    name: 'Snake & Ladder',
+    icon: '🐍',
+    description: 'Classic board game with modern twist',
+    difficulty: 'Easy',
+    minBet: 10,
+    maxBet: 200,
+    avgDuration: '3-5 min',
+    players: 2156,
+    gradient: 'from-green-600 to-emerald-500',
+    textColor: 'text-green-100'
+  },
+  {
+    id: 'Carrom',
+    name: 'Carrom Board',
+    icon: '🎯',
+    description: 'Precision flicks and strategic shots',
+    difficulty: 'Medium',
+    minBet: 10,
+    maxBet: 300,
+    avgDuration: '4-6 min',
+    players: 1847,
+    gradient: 'from-blue-600 to-cyan-500',
+    textColor: 'text-blue-100'
+  }
+];
+
+const BET_AMOUNTS = [10, 25, 50, 100];
+
+export function MPLGamingHub({
+  playerProfile,
+  playerWallet,
+  developerEarnings,
+  networkQuality,
+  offlineMode,
+  pendingActions,
+  onFindMatch,
+  onDeposit,
+  onWithdraw,
+  onForceSync
+}: MPLGamingHubProps) {
+  const [selectedGame, setSelectedGame] = useState<GameType | null>(null);
+  const [selectedBet, setSelectedBet] = useState(10);
+  const [loading, setLoading] = useState(false);
+  const [showWallet, setShowWallet] = useState(false);
+  const [depositAmount, setDepositAmount] = useState(100);
+  const [withdrawAmount, setWithdrawAmount] = useState(50);
+
+  const balance = playerWallet.balanceCents / 100;
+  const pendingBets = playerWallet.pendingBetsCents / 100;
+  const totalDeposited = playerWallet.totalDepositedCents / 100;
+  const totalWithdrawn = playerWallet.totalWithdrawnCents / 100;
+  const totalEarnings = playerProfile.totalEarningsCents / 100;
+  const winRate = playerProfile.totalGamesPlayed > 0 ? 
+    Math.round((playerProfile.totalWins / playerProfile.totalGamesPlayed) * 100) : 0;
+
+  const handleFindMatch = async (gameType: GameType, betAmount: number) => {
+    if (balance < betAmount) {
+      toast.error('Insufficient balance! Please add funds.');
+      setShowWallet(true);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await onFindMatch(gameType, betAmount);
+      toast.success(`Looking for opponent in ${gameType}...`);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to find match');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeposit = async () => {
+    if (depositAmount < 50) {
+      toast.error('Minimum deposit is ₹50');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await onDeposit(depositAmount);
+      toast.success(`₹${depositAmount} deposit initiated`);
+      setShowWallet(false);
+    } catch (error: any) {
+      toast.error(error.message || 'Deposit failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (withdrawAmount < 50) {
+      toast.error('Minimum withdrawal is ₹50');
+      return;
+    }
+
+    if (withdrawAmount > balance) {
+      toast.error('Insufficient balance');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await onWithdraw(withdrawAmount);
+      toast.success(`₹${withdrawAmount} withdrawal initiated`);
+      setShowWallet(false);
+    } catch (error: any) {
+      toast.error(error.message || 'Withdrawal failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Wallet Modal
+  if (showWallet) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-900 p-4 pt-16">
+        <div className="max-w-md mx-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <Button 
+              variant="ghost" 
+              onClick={() => setShowWallet(false)}
+              className="text-white"
+            >
+              ← Back
+            </Button>
+            <h1 className="text-2xl font-bold text-white">Wallet</h1>
+            <div className="w-8" />
+          </div>
+
+          {/* Balance Card */}
+          <Card className="mb-6 bg-gradient-to-r from-green-600 to-emerald-500 border-0 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-green-100 text-sm">Available Balance</p>
+                  <p className="text-3xl font-bold">₹{balance.toFixed(2)}</p>
+                </div>
+                <Wallet className="w-12 h-12 text-green-200" />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-green-200">Pending Bets</p>
+                  <p className="font-bold">₹{pendingBets.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-green-200">Total Earnings</p>
+                  <p className="font-bold">₹{totalEarnings.toFixed(2)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Deposit Section */}
+          <Card className="mb-4 bg-white/10 backdrop-blur border-white/20">
+            <CardHeader>
+              <h3 className="text-white font-bold flex items-center gap-2">
+                <Plus className="w-5 h-5" />
+                Add Money
+              </h3>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                {[50, 100, 250, 500].map(amount => (
+                  <Button
+                    key={amount}
+                    variant={depositAmount === amount ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDepositAmount(amount)}
+                    className={depositAmount === amount ? 
+                      "bg-green-500 text-white" : 
+                      "border-white/30 text-white hover:bg-white/10"}
+                  >
+                    ₹{amount}
+                  </Button>
+                ))}
+              </div>
+              
+              <Button 
+                onClick={handleDeposit} 
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white"
+              >
+                {loading ? 'Processing...' : `Deposit ₹${depositAmount}`}
+              </Button>
+              
+              <p className="text-white/60 text-xs text-center">
+                UPI • Cards • Net Banking • Wallets
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Withdraw Section */}
+          <Card className="bg-white/10 backdrop-blur border-white/20">
+            <CardHeader>
+              <h3 className="text-white font-bold flex items-center gap-2">
+                <ArrowRight className="w-5 h-5" />
+                Withdraw Money
+              </h3>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                {[50, 100, 200, 500].map(amount => (
+                  <Button
+                    key={amount}
+                    variant={withdrawAmount === amount ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setWithdrawAmount(amount)}
+                    disabled={amount > balance}
+                    className={withdrawAmount === amount ? 
+                      "bg-blue-500 text-white" : 
+                      "border-white/30 text-white hover:bg-white/10 disabled:opacity-30"}
+                  >
+                    ₹{amount}
+                  </Button>
+                ))}
+              </div>
+              
+              <Button 
+                onClick={handleWithdraw} 
+                disabled={loading || withdrawAmount > balance}
+                className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white disabled:opacity-50"
+              >
+                {loading ? 'Processing...' : `Withdraw ₹${withdrawAmount}`}
+              </Button>
+              
+              <p className="text-white/60 text-xs text-center">
+                Bank Transfer • UPI • Instant withdrawal
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Game Selection Modal
+  if (selectedGame) {
+    const game = GAMES.find(g => g.id === selectedGame)!;
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-900 p-4 pt-16">
+        <div className="max-w-md mx-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <Button 
+              variant="ghost" 
+              onClick={() => setSelectedGame(null)}
+              className="text-white"
+            >
+              ← Back
+            </Button>
+            <h1 className="text-xl font-bold text-white">{game.name}</h1>
+            <div className="w-8" />
+          </div>
+
+          {/* Game Info Card */}
+          <Card className={`mb-6 bg-gradient-to-r ${game.gradient} border-0 text-white`}>
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="text-6xl">{game.icon}</div>
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold">{game.name}</h2>
+                  <p className={`${game.textColor} text-sm`}>{game.description}</p>
+                  <div className="flex gap-4 mt-2 text-xs">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {game.avgDuration}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Users className="w-3 h-3" />
+                      {game.players} playing
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <Badge className={`bg-white/20 ${game.textColor}`}>
+                  {game.difficulty}
+                </Badge>
+                <div className="text-right">
+                  <p className={`${game.textColor} text-xs`}>Bet Range</p>
+                  <p className="font-bold">₹{game.minBet} - ₹{game.maxBet}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Bet Amount Selection */}
+          <Card className="mb-6 bg-white/10 backdrop-blur border-white/20">
+            <CardHeader>
+              <h3 className="text-white font-bold">Select Bet Amount</h3>
+              <p className="text-white/60 text-sm">Winner takes 80% • Platform fee 20%</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {BET_AMOUNTS.filter(amount => amount <= game.maxBet).map(amount => (
+                  <Button
+                    key={amount}
+                    variant={selectedBet === amount ? "default" : "outline"}
+                    onClick={() => setSelectedBet(amount)}
+                    className={`p-6 ${selectedBet === amount ? 
+                      "bg-yellow-500 text-black" : 
+                      "border-white/30 text-white hover:bg-white/10"}`}
+                  >
+                    <div className="text-center">
+                      <p className="text-lg font-bold">₹{amount}</p>
+                      <p className="text-xs opacity-80">Win ₹{Math.floor(amount * 2 * 0.8)}</p>
+                    </div>
+                  </Button>
+                ))}
+              </div>
+              
+              <div className="bg-white/5 p-4 rounded-lg">
+                <div className="flex justify-between text-sm text-white/80">
+                  <span>Your Bet:</span>
+                  <span>₹{selectedBet}</span>
+                </div>
+                <div className="flex justify-between text-sm text-white/80">
+                  <span>Opponent's Bet:</span>
+                  <span>₹{selectedBet}</span>
+                </div>
+                <div className="border-t border-white/20 my-2"></div>
+                <div className="flex justify-between text-white font-bold">
+                  <span>Winner Gets:</span>
+                  <span>₹{Math.floor(selectedBet * 2 * 0.8)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Balance Check */}
+          <Card className="mb-6 bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="p-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-white/60 text-sm">Available Balance</p>
+                  <p className="text-white font-bold text-lg">₹{balance.toFixed(2)}</p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setShowWallet(true)}
+                  className="border-white/30 text-white hover:bg-white/10"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add
+                </Button>
+              </div>
+              
+              {balance < selectedBet && (
+                <div className="mt-3 p-3 bg-red-500/20 rounded-lg border border-red-500/30">
+                  <p className="text-red-300 text-sm">
+                    Insufficient balance. Add ₹{selectedBet - balance} to play.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Find Match Button */}
+          <Button 
+            onClick={() => handleFindMatch(selectedGame, selectedBet)} 
+            disabled={loading || balance < selectedBet}
+            className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-bold py-6 text-lg disabled:opacity-50"
+          >
+            {loading ? 'Finding Opponent...' : `Find Match • ₹${selectedBet}`}
+          </Button>
+          
+          {offlineMode && (
+            <div className="mt-4 bg-blue-500/20 p-3 rounded-lg text-center">
+              <p className="text-blue-200 text-sm">Demo Mode - Instant matches available</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Main Hub
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-900 p-4 pt-16">
+      <div className="max-w-md mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Avatar className="w-12 h-12 bg-gradient-to-r from-yellow-400 to-orange-500">
+              <AvatarFallback className="text-black font-bold">
+                {playerProfile.username.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h1 className="text-white font-bold text-lg">
+                Hi, {playerProfile.username}
+              </h1>
+              <p className="text-white/60 text-sm">Ready to win?</p>
+            </div>
+          </div>
+          
+          {/* Network Status */}
+          <div className="flex items-center gap-2">
+            {networkQuality === 'offline' ? (
+              <WifiOff className="w-5 h-5 text-red-400" />
+            ) : (
+              <Wifi className={`w-5 h-5 ${
+                networkQuality === 'excellent' ? 'text-green-400' :
+                networkQuality === 'good' ? 'text-yellow-400' :
+                'text-orange-400'
+              }`} />
+            )}
+            
+            {pendingActions.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onForceSync}
+                className="text-white p-1"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Balance Card */}
+        <Card className="mb-6 bg-gradient-to-r from-green-600 to-emerald-500 border-0 text-white">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-green-100 text-sm">Total Balance</p>
+                <p className="text-3xl font-bold">₹{balance.toFixed(2)}</p>
+                {pendingBets > 0 && (
+                  <p className="text-green-200 text-xs">₹{pendingBets} in active bets</p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => setShowWallet(true)}
+                className="text-white hover:bg-white/20"
+              >
+                <Wallet className="w-6 h-6" />
+              </Button>
+            </div>
+            
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-green-200">Deposited</p>
+                <p className="font-bold">₹{totalDeposited}</p>
+              </div>
+              <div>
+                <p className="text-green-200">Withdrawn</p>
+                <p className="font-bold">₹{totalWithdrawn}</p>
+              </div>
+              <div>
+                <p className="text-green-200">Earnings</p>
+                <p className="font-bold">₹{totalEarnings}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <Card className="bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="p-4 text-center">
+              <Trophy className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{playerProfile.totalWins}</p>
+              <p className="text-white/60 text-sm">Wins</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="p-4 text-center">
+              <Target className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{winRate}%</p>
+              <p className="text-white/60 text-sm">Win Rate</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Games Section */}
+        <div className="space-y-4 mb-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-white font-bold text-xl">Choose Your Game</h2>
+            <Badge className="bg-yellow-500 text-black">
+              <Star className="w-3 h-3 mr-1" />
+              Featured
+            </Badge>
+          </div>
+          
+          {GAMES.map(game => (
+            <Card 
+              key={game.id} 
+              className={`bg-gradient-to-r ${game.gradient} border-0 cursor-pointer hover:scale-105 transition-transform duration-200`}
+              onClick={() => setSelectedGame(game.id)}
+            >
+              <CardContent className="p-5">
+                <div className="flex items-center gap-4">
+                  <div className="text-4xl">{game.icon}</div>
+                  <div className="flex-1">
+                    <h3 className="text-white font-bold text-lg">{game.name}</h3>
+                    <p className={`${game.textColor} text-sm mb-2`}>{game.description}</p>
+                    
+                    <div className="flex gap-4 text-xs text-white/90">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {game.avgDuration}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        {game.players}
+                      </span>
+                      <Badge className={`bg-white/20 ${game.textColor} text-xs`}>
+                        {game.difficulty}
+                      </Badge>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-6 h-6 text-white/60" />
+                </div>
+                
+                <div className="mt-3 pt-3 border-t border-white/20">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className={`${game.textColor} text-xs`}>Bet Range</p>
+                      <p className="text-white font-bold">₹{game.minBet} - ₹{game.maxBet}</p>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      className="bg-white/20 text-white hover:bg-white/30 border-0"
+                    >
+                      <Gamepad2 className="w-4 h-4 mr-1" />
+                      Play Now
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Quick Actions */}
+        <Card className="bg-white/10 backdrop-blur border-white/20">
+          <CardHeader>
+            <h3 className="text-white font-bold">Quick Actions</h3>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-3">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowWallet(true)}
+              className="border-white/30 text-white hover:bg-white/10"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Money
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              disabled
+              className="border-white/30 text-white/50"
+            >
+              <Award className="w-4 h-4 mr-2" />
+              Leaderboard
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Offline Mode Notice */}
+        {offlineMode && (
+          <Card className="mt-4 bg-blue-500/20 border-blue-500/30">
+            <CardContent className="p-4 text-center">
+              <p className="text-blue-200">
+                📱 Demo Mode Active - All features available for testing
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Pending Actions Notice */}
+        {pendingActions.length > 0 && (
+          <Card className="mt-4 bg-orange-500/20 border-orange-500/30">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-orange-200">
+                  {pendingActions.length} actions pending sync
+                </p>
+                <Button
+                  size="sm"
+                  onClick={onForceSync}
+                  className="bg-orange-500 text-white"
+                >
+                  <RotateCcw className="w-4 h-4 mr-1" />
+                  Sync Now
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,636 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Button } from '../ui/button';
+import { Card, CardContent, CardHeader } from '../ui/card';
+import { Badge } from '../ui/badge';
+import { Progress } from '../ui/progress';
+import { 
+  Dice1, Dice2, Dice3, Dice4, Dice5, Dice6,
+  Trophy, Clock, ArrowLeft, Flag, Zap, Target
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+interface ProfessionalSnakeLadderProps {
+  matchId: string;
+  playerName: string;
+  opponentName: string;
+  timeLeft: number;
+  betAmount: number;
+  onGameEnd: (score: number) => void;
+  onQuitGame: () => void;
+}
+
+interface PlayerState {
+  position: number;
+  score: number;
+  rolls: number;
+  ladderClimbs: number;
+  snakeBites: number;
+}
+
+// Classic Snake and Ladder positions
+const LADDERS = new Map([
+  [3, 22], [5, 8], [11, 26], [20, 29], [17, 74], 
+  [27, 84], [28, 56], [51, 67], [71, 91], [80, 99]
+]);
+
+const SNAKES = new Map([
+  [99, 78], [95, 75], [92, 88], [87, 24], [64, 60],
+  [62, 19], [54, 34], [49, 11], [46, 25], [16, 6]
+]);
+
+const DICE_ICONS = [Dice1, Dice2, Dice3, Dice4, Dice5, Dice6];
+
+export default function ProfessionalSnakeLadder({
+  matchId,
+  playerName,
+  opponentName,
+  timeLeft,
+  betAmount,
+  onGameEnd,
+  onQuitGame
+}: ProfessionalSnakeLadderProps) {
+  const [playerState, setPlayerState] = useState<PlayerState>({
+    position: 1,
+    score: 0,
+    rolls: 0,
+    ladderClimbs: 0,
+    snakeBites: 0
+  });
+  
+  const [opponentState, setOpponentState] = useState<PlayerState>({
+    position: 1,
+    score: 0,
+    rolls: 0,
+    ladderClimbs: 0,
+    snakeBites: 0
+  });
+  
+  const [isPlayerTurn, setIsPlayerTurn] = useState(true);
+  const [isRolling, setIsRolling] = useState(false);
+  const [currentRoll, setCurrentRoll] = useState<number | null>(null);
+  const [gamePhase, setGamePhase] = useState<'early' | 'middle' | 'late'>('early');
+  const [winner, setWinner] = useState<'player' | 'opponent' | null>(null);
+  const [animatingPiece, setAnimatingPiece] = useState<{ from: number; to: number } | null>(null);
+  
+  // Audio context for sound effects
+  const audioContextRef = useRef<AudioContext | null>(null);
+  
+  useEffect(() => {
+    // Initialize audio context
+    if (typeof window !== 'undefined') {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    return () => {
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
+  
+  // Game end when time runs out
+  useEffect(() => {
+    if (timeLeft === 0 && !winner) {
+      const finalScore = calculateFinalScore(playerState);
+      onGameEnd(finalScore);
+    }
+  }, [timeLeft, winner]);
+  
+  // Update game phase based on positions
+  useEffect(() => {
+    const maxPos = Math.max(playerState.position, opponentState.position);
+    if (maxPos >= 80) {
+      setGamePhase('late');
+    } else if (maxPos >= 40) {
+      setGamePhase('middle');
+    } else {
+      setGamePhase('early');
+    }
+  }, [playerState.position, opponentState.position]);
+  
+  const playSound = useCallback((type: 'roll' | 'move' | 'ladder' | 'snake' | 'win') => {
+    if (!audioContextRef.current) return;
+    
+    const ctx = audioContextRef.current;
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    switch (type) {
+      case 'roll':
+        oscillator.frequency.setValueAtTime(400, ctx.currentTime);
+        for (let i = 0; i < 3; i++) {
+          oscillator.frequency.setValueAtTime(400 + i * 100, ctx.currentTime + i * 0.1);
+        }
+        break;
+      case 'move':
+        oscillator.frequency.setValueAtTime(800, ctx.currentTime);
+        break;
+      case 'ladder':
+        for (let i = 0; i < 5; i++) {
+          oscillator.frequency.setValueAtTime(500 + i * 150, ctx.currentTime + i * 0.1);
+        }
+        break;
+      case 'snake':
+        for (let i = 0; i < 3; i++) {
+          oscillator.frequency.setValueAtTime(800 - i * 200, ctx.currentTime + i * 0.15);
+        }
+        break;
+      case 'win':
+        for (let i = 0; i < 6; i++) {
+          oscillator.frequency.setValueAtTime(523 + (i % 3) * 131, ctx.currentTime + i * 0.2);
+        }
+        break;
+    }
+    
+    oscillator.type = 'sine';
+    gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+    
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 0.8);
+  }, []);
+  
+  const rollDice = useCallback((): number => {
+    return Math.floor(Math.random() * 6) + 1;
+  }, []);
+  
+  const calculateScore = useCallback((state: PlayerState, roll: number, newPos: number, isLadder: boolean, isSnake: boolean): number => {
+    let points = 0;
+    
+    // Base movement points
+    points += roll * 10;
+    
+    // Position milestone bonuses
+    if (newPos >= 90) points += 500;
+    else if (newPos >= 75) points += 300;
+    else if (newPos >= 50) points += 200;
+    else if (newPos >= 25) points += 100;
+    
+    // Special event bonuses/penalties
+    if (isLadder) {
+      points += 150; // Ladder bonus
+    } else if (isSnake) {
+      points = Math.max(0, points - 100); // Snake penalty
+    }
+    
+    // Game phase bonuses
+    switch (gamePhase) {
+      case 'early':
+        if (roll === 6) points += 50;
+        break;
+      case 'middle':
+        if (roll >= 4) points += 30;
+        break;
+      case 'late':
+        points += roll * 20; // Double points in endgame
+        break;
+    }
+    
+    // Efficiency bonus (fewer rolls = higher score)
+    if (state.rolls < 20) points += 100;
+    else if (state.rolls < 30) points += 50;
+    
+    return points;
+  }, [gamePhase]);
+  
+  const handlePlayerMove = useCallback(async (roll: number) => {
+    const newPos = Math.min(100, playerState.position + roll);
+    let finalPos = newPos;
+    let isLadder = false;
+    let isSnake = false;
+    
+    // Check for ladders
+    if (LADDERS.has(newPos)) {
+      finalPos = LADDERS.get(newPos)!;
+      isLadder = true;
+      playSound('ladder');
+      toast.success(`🪜 Ladder! Climb to ${finalPos}!`);
+    }
+    // Check for snakes
+    else if (SNAKES.has(newPos)) {
+      finalPos = SNAKES.get(newPos)!;
+      isSnake = true;
+      playSound('snake');
+      toast.error(`🐍 Snake bite! Slide to ${finalPos}!`);
+    } else {
+      playSound('move');
+    }
+    
+    // Animate piece movement
+    setAnimatingPiece({ from: playerState.position, to: finalPos });
+    
+    // Calculate score for this move
+    const moveScore = calculateScore(playerState, roll, finalPos, isLadder, isSnake);
+    
+    // Update player state
+    const newPlayerState: PlayerState = {
+      position: finalPos,
+      score: playerState.score + moveScore,
+      rolls: playerState.rolls + 1,
+      ladderClimbs: playerState.ladderClimbs + (isLadder ? 1 : 0),
+      snakeBites: playerState.snakeBites + (isSnake ? 1 : 0)
+    };
+    
+    setPlayerState(newPlayerState);
+    
+    // Check for win condition
+    if (finalPos === 100) {
+      setWinner('player');
+      playSound('win');
+      toast.success('🎉 You reached 100! Victory!');
+      setTimeout(() => {
+        const finalScore = calculateFinalScore(newPlayerState);
+        onGameEnd(finalScore);
+      }, 2000);
+      return;
+    }
+    
+    // Clear animation and switch turns
+    setTimeout(() => {
+      setAnimatingPiece(null);
+      setIsPlayerTurn(false);
+      
+      // Opponent turn after delay
+      setTimeout(() => {
+        handleOpponentMove();
+      }, 1000);
+    }, 1500);
+    
+  }, [playerState, gamePhase, playSound, calculateScore, onGameEnd]);
+  
+  const handleOpponentMove = useCallback(() => {
+    const roll = rollDice();
+    setCurrentRoll(roll);
+    
+    setTimeout(() => {
+      const newPos = Math.min(100, opponentState.position + roll);
+      let finalPos = newPos;
+      let isLadder = false;
+      let isSnake = false;
+      
+      // Check for ladders and snakes
+      if (LADDERS.has(newPos)) {
+        finalPos = LADDERS.get(newPos)!;
+        isLadder = true;
+        playSound('ladder');
+        toast(`🤖 ${opponentName} climbed a ladder to ${finalPos}!`);
+      } else if (SNAKES.has(newPos)) {
+        finalPos = SNAKES.get(newPos)!;
+        isSnake = true;
+        playSound('snake');
+        toast(`🤖 ${opponentName} hit a snake, slid to ${finalPos}!`);
+      } else {
+        playSound('move');
+      }
+      
+      // Calculate opponent score (slightly randomized for realism)
+      const baseScore = calculateScore(opponentState, roll, finalPos, isLadder, isSnake);
+      const opponentScore = Math.round(baseScore * (0.8 + Math.random() * 0.4));
+      
+      // Update opponent state
+      const newOpponentState: PlayerState = {
+        position: finalPos,
+        score: opponentState.score + opponentScore,
+        rolls: opponentState.rolls + 1,
+        ladderClimbs: opponentState.ladderClimbs + (isLadder ? 1 : 0),
+        snakeBites: opponentState.snakeBites + (isSnake ? 1 : 0)
+      };
+      
+      setOpponentState(newOpponentState);
+      
+      // Check for opponent win
+      if (finalPos === 100) {
+        setWinner('opponent');
+        playSound('win');
+        toast.error(`🤖 ${opponentName} reached 100 first!`);
+        setTimeout(() => {
+          const finalScore = calculateFinalScore(playerState);
+          onGameEnd(finalScore);
+        }, 2000);
+        return;
+      }
+      
+      // Switch back to player
+      setTimeout(() => {
+        setCurrentRoll(null);
+        setIsPlayerTurn(true);
+      }, 1500);
+      
+    }, 1000);
+  }, [opponentState, opponentName, rollDice, calculateScore, playSound, playerState, onGameEnd]);
+  
+  const handleRollDice = useCallback(async () => {
+    if (!isPlayerTurn || isRolling || winner) return;
+    
+    setIsRolling(true);
+    playSound('roll');
+    
+    // Animate dice rolling
+    const roll = rollDice();
+    setCurrentRoll(roll);
+    
+    setTimeout(() => {
+      setIsRolling(false);
+      handlePlayerMove(roll);
+    }, 1000);
+  }, [isPlayerTurn, isRolling, winner, rollDice, playSound, handlePlayerMove]);
+  
+  const calculateFinalScore = useCallback((state: PlayerState): number => {
+    let finalScore = state.score;
+    
+    // Position bonus (closer to 100 = higher score)
+    finalScore += state.position * 5;
+    
+    // Efficiency bonus
+    if (state.rolls < 15) finalScore += 300;
+    else if (state.rolls < 25) finalScore += 150;
+    
+    // Adventure bonus
+    finalScore += state.ladderClimbs * 100;
+    finalScore -= state.snakeBites * 50;
+    
+    // Time bonus (faster completion)
+    const remainingTime = Math.max(0, timeLeft);
+    finalScore += remainingTime * 2;
+    
+    // Completion bonus
+    if (state.position === 100) {
+      finalScore += 1000;
+    }
+    
+    return Math.max(0, Math.round(finalScore));
+  }, [timeLeft]);
+  
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+  
+  const getSquareStyle = (squareNum: number) => {
+    const isPlayerHere = playerState.position === squareNum;
+    const isOpponentHere = opponentState.position === squareNum;
+    const isLadderStart = LADDERS.has(squareNum);
+    const isSnakeHead = SNAKES.has(squareNum);
+    const isAnimating = animatingPiece && 
+      (animatingPiece.from === squareNum || animatingPiece.to === squareNum);
+    
+    let bgColor = 'bg-amber-100';
+    if (isLadderStart) bgColor = 'bg-green-200';
+    if (isSnakeHead) bgColor = 'bg-red-200';
+    if (squareNum === 100) bgColor = 'bg-yellow-300';
+    
+    return `
+      ${bgColor} border border-amber-300 flex items-center justify-center text-xs font-bold
+      relative transition-all duration-300
+      ${isAnimating ? 'ring-2 ring-blue-400 animate-pulse' : ''}
+    `;
+  };
+  
+  const renderBoard = () => {
+    const squares = [];
+    
+    for (let row = 0; row < 10; row++) {
+      const isEvenRow = row % 2 === 0;
+      const squareRow = [];
+      
+      for (let col = 0; col < 10; col++) {
+        const squareNum = isEvenRow 
+          ? (9 - row) * 10 + col + 1
+          : (9 - row) * 10 + (9 - col) + 1;
+        
+        const isPlayerHere = playerState.position === squareNum;
+        const isOpponentHere = opponentState.position === squareNum;
+        const isLadderStart = LADDERS.has(squareNum);
+        const isSnakeHead = SNAKES.has(squareNum);
+        
+        squareRow.push(
+          <div key={squareNum} className={`aspect-square ${getSquareStyle(squareNum)}`}>
+            <span className="text-amber-800">{squareNum}</span>
+            
+            {/* Special markers */}
+            {isLadderStart && (
+              <div className="absolute top-0 right-0 text-green-600">🪜</div>
+            )}
+            {isSnakeHead && (
+              <div className="absolute top-0 right-0 text-red-600">🐍</div>
+            )}
+            {squareNum === 100 && (
+              <div className="absolute top-0 right-0 text-yellow-600">🏆</div>
+            )}
+            
+            {/* Player pieces */}
+            <div className="absolute bottom-0 left-0 flex gap-1">
+              {isPlayerHere && (
+                <div className="w-3 h-3 bg-green-500 rounded-full border border-white shadow-lg animate-bounce"></div>
+              )}
+              {isOpponentHere && (
+                <div className="w-3 h-3 bg-red-500 rounded-full border border-white shadow-lg animate-bounce"></div>
+              )}
+            </div>
+          </div>
+        );
+      }
+      
+      squares.push(
+        <div key={row} className="grid grid-cols-10 gap-1">
+          {squareRow}
+        </div>
+      );
+    }
+    
+    return squares;
+  };
+  
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-green-800 via-emerald-700 to-teal-700 p-4 pt-12">
+      {/* Header */}
+      <div className="max-w-2xl mx-auto mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <Button 
+            variant="ghost" 
+            onClick={onQuitGame}
+            className="text-white hover:bg-white/10"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Quit
+          </Button>
+          
+          <div className="text-center">
+            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              🐍 Snake & Ladder
+            </h1>
+            <p className="text-green-200 text-sm">₹{betAmount} Match</p>
+          </div>
+          
+          <div className="text-right text-white">
+            <p className="text-sm text-green-200">Time Left</p>
+            <p className="font-bold text-lg">{formatTime(timeLeft)}</p>
+          </div>
+        </div>
+        
+        {/* Players */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <Card className="bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">
+                    {playerName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium text-sm">{playerName}</p>
+                  <div className="flex items-center gap-2">
+                    <Badge className={`text-xs ${isPlayerTurn ? 'bg-green-500' : 'bg-gray-500'}`}>
+                      Pos: {playerState.position}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-yellow-400 font-bold">{playerState.score}</p>
+                  <p className="text-white/60 text-xs">Score</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">
+                    {opponentName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium text-sm">{opponentName}</p>
+                  <div className="flex items-center gap-2">
+                    <Badge className={`text-xs ${!isPlayerTurn ? 'bg-red-500' : 'bg-gray-500'}`}>
+                      Pos: {opponentState.position}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-blue-400 font-bold">{opponentState.score}</p>
+                  <p className="text-white/60 text-xs">Score</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      
+      {/* Game Board */}
+      <div className="max-w-lg mx-auto mb-4">
+        <div className="bg-amber-50 p-2 rounded-lg shadow-2xl">
+          <div className="space-y-1">
+            {renderBoard()}
+          </div>
+        </div>
+      </div>
+      
+      {/* Dice and Controls */}
+      <div className="max-w-md mx-auto text-center space-y-4">
+        {/* Current Roll Display */}
+        {currentRoll && (
+          <div className="flex justify-center">
+            <div className="bg-white p-4 rounded-lg shadow-lg animate-bounce">
+              {React.createElement(DICE_ICONS[currentRoll - 1], {
+                className: "w-12 h-12 text-green-600"
+              })}
+            </div>
+          </div>
+        )}
+        
+        {/* Roll Button */}
+        <Button 
+          onClick={handleRollDice}
+          disabled={!isPlayerTurn || isRolling || winner !== null}
+          className={`
+            w-full py-6 text-xl font-bold transition-all duration-300
+            ${isPlayerTurn && !isRolling && !winner ? 
+              'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 animate-pulse' :
+              'bg-gray-500 cursor-not-allowed opacity-50'
+            }
+          `}
+        >
+          {isRolling ? (
+            <>
+              <Zap className="w-6 h-6 mr-2 animate-spin" />
+              Rolling Dice...
+            </>
+          ) : isPlayerTurn && !winner ? (
+            <>
+              <Dice1 className="w-6 h-6 mr-2" />
+              Roll Dice
+            </>
+          ) : !isPlayerTurn && !winner ? (
+            `${opponentName} is rolling...`
+          ) : (
+            'Game Over'
+          )}
+        </Button>
+        
+        {/* Game Stats */}
+        <div className="grid grid-cols-4 gap-2">
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-yellow-400 font-bold">{playerState.rolls}</p>
+            <p className="text-white/60 text-xs">Rolls</p>
+          </div>
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-green-400 font-bold">{playerState.ladderClimbs}</p>
+            <p className="text-white/60 text-xs">Ladders</p>
+          </div>
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-red-400 font-bold">{playerState.snakeBites}</p>
+            <p className="text-white/60 text-xs">Snakes</p>
+          </div>
+          <div className="bg-black/20 p-2 rounded text-center">
+            <p className="text-purple-400 font-bold">{gamePhase}</p>
+            <p className="text-white/60 text-xs">Phase</p>
+          </div>
+        </div>
+        
+        {/* Progress Bar */}
+        <div className="space-y-2">
+          <div className="flex justify-between text-white text-sm">
+            <span>Progress to 100</span>
+            <span>{Math.max(playerState.position, opponentState.position)}/100</span>
+          </div>
+          <Progress 
+            value={Math.max(playerState.position, opponentState.position)} 
+            max={100}
+            className="h-3"
+          />
+        </div>
+        
+        {/* Instructions */}
+        <div className="text-white/80 text-sm space-y-1">
+          <p>🎯 <strong>Reach 100 first to win!</strong></p>
+          <p>🪜 <strong>Green squares:</strong> Ladders boost you up</p>
+          <p>🐍 <strong>Red squares:</strong> Snakes slide you down</p>
+        </div>
+        
+        {/* Submit Score Button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const finalScore = calculateFinalScore(playerState);
+            onGameEnd(finalScore);
+          }}
+          className="bg-blue-500/20 border-blue-400 text-blue-300 hover:bg-blue-500/30"
+        >
+          <Flag className="w-4 h-4 mr-1" />
+          Submit Score ({calculateFinalScore(playerState)})
+        </Button>
+      </div>
+    </div>
+  );
+}

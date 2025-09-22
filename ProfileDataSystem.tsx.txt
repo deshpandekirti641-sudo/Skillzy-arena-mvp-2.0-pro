@@ -1,0 +1,682 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import type { FC } from 'react'
+
+interface UserProfile {
+  userId: string
+  username: string
+  fullName: string
+  email: string
+  phoneNumber: string
+  dateOfBirth: string
+  location: string
+  avatar: string | null
+  joinDate: string
+  lastActive: string
+  isVerified: boolean
+  kycStatus: 'not_started' | 'pending' | 'verified' | 'rejected'
+  preferences: {
+    notifications: boolean
+    emailUpdates: boolean
+    soundEffects: boolean
+    autoMatch: boolean
+    language: string
+    theme: 'light' | 'dark'
+  }
+  gameStats: {
+    totalGames: number
+    gamesWon: number
+    currentWinStreak: number
+    longestWinStreak: number
+    favoriteGame: string
+    totalPlayTime: number
+    skillRating: number
+  }
+  socialData: {
+    referralCode: string
+    friendsReferred: number
+    friendsList: string[]
+    blockedUsers: string[]
+    achievements: Achievement[]
+  }
+  financialData: {
+    currentBalance: number
+    totalDeposits: number
+    totalWithdrawals: number
+    totalEarnings: number
+    lifetimeWinnings: number
+  }
+}
+
+interface Achievement {
+  id: string
+  title: string
+  description: string
+  icon: string
+  unlockedDate: string
+  isRare: boolean
+}
+
+interface ProfileDataSystemProps {
+  isOpen: boolean
+  onClose: () => void
+  userProfile: UserProfile
+  onUpdateProfile: (updatedProfile: Partial<UserProfile>) => void
+  onDeleteAccount: () => void
+}
+
+const ProfileDataSystem: FC<ProfileDataSystemProps> = ({
+  isOpen,
+  onClose,
+  userProfile,
+  onUpdateProfile,
+  onDeleteAccount
+}) => {
+  const [activeTab, setActiveTab] = useState<'profile' | 'settings' | 'achievements' | 'privacy'>('profile')
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedProfile, setEditedProfile] = useState<Partial<UserProfile>>(userProfile)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  useEffect(() => {
+    setEditedProfile(userProfile)
+  }, [userProfile])
+
+  const handleSaveProfile = () => {
+    onUpdateProfile(editedProfile)
+    setIsEditing(false)
+  }
+
+  const handleInputChange = (field: string, value: any, nested?: string) => {
+    if (nested) {
+      setEditedProfile(prev => ({
+        ...prev,
+        [nested]: {
+          ...(prev[nested as keyof UserProfile] as any),
+          [field]: value
+        }
+      }))
+    } else {
+      setEditedProfile(prev => ({
+        ...prev,
+        [field]: value
+      }))
+    }
+  }
+
+  const calculateAge = (dateOfBirth: string): number => {
+    const today = new Date()
+    const birth = new Date(dateOfBirth)
+    let age = today.getFullYear() - birth.getFullYear()
+    const monthDiff = today.getMonth() - birth.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    return age
+  }
+
+  const formatDuration = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+    
+    if (days > 0) {
+      return `${days}d ${hours % 24}h`
+    } else if (hours > 0) {
+      return `${hours}h ${minutes % 60}m`
+    } else {
+      return `${minutes}m`
+    }
+  }
+
+  const getSkillRatingColor = (rating: number): string => {
+    if (rating >= 2000) return 'text-purple-600 bg-purple-50'
+    if (rating >= 1500) return 'text-blue-600 bg-blue-50'
+    if (rating >= 1000) return 'text-green-600 bg-green-50'
+    if (rating >= 500) return 'text-yellow-600 bg-yellow-50'
+    return 'text-gray-600 bg-gray-50'
+  }
+
+  const getSkillLevel = (rating: number): string => {
+    if (rating >= 2000) return 'Grandmaster'
+    if (rating >= 1500) return 'Expert'
+    if (rating >= 1000) return 'Advanced'
+    if (rating >= 500) return 'Intermediate'
+    return 'Beginner'
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-hidden">
+        
+        {/* Header */}
+        <div className="sticky top-0 bg-white rounded-t-3xl border-b p-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-800">Profile</h2>
+          <div className="flex items-center space-x-2">
+            {activeTab === 'profile' && (
+              <button
+                onClick={() => setIsEditing(!isEditing)}
+                className="px-3 py-1 text-sm font-medium text-blue-600 bg-blue-50 rounded-full hover:bg-blue-100 transition-colors"
+              >
+                {isEditing ? 'Cancel' : 'Edit'}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Selector */}
+        <div className="p-4 pb-0">
+          <div className="bg-gray-100 rounded-2xl p-1 grid grid-cols-4 gap-1">
+            {[
+              { id: 'profile', name: 'Profile', icon: '👤' },
+              { id: 'settings', name: 'Settings', icon: '⚙️' },
+              { id: 'achievements', name: 'Awards', icon: '🏆' },
+              { id: 'privacy', name: 'Privacy', icon: '🔒' }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`py-2 px-1 rounded-xl font-medium text-xs transition-all ${
+                  activeTab === tab.id
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <div>{tab.icon}</div>
+                <div>{tab.name}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="overflow-y-auto max-h-[70vh] p-4 space-y-4">
+
+          {/* Profile Tab */}
+          {activeTab === 'profile' && (
+            <>
+              {/* Avatar and Basic Info */}
+              <div className="text-center space-y-3">
+                <div className="relative inline-block">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold">
+                    {userProfile.avatar ? (
+                      <img src={userProfile.avatar} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                    ) : (
+                      userProfile.username.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  {userProfile.isVerified && (
+                    <div className="absolute -top-1 -right-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                      <span className="text-white text-xs">✓</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editedProfile.fullName || ''}
+                        onChange={(e) => handleInputChange('fullName', e.target.value)}
+                        className="text-center bg-gray-50 border border-gray-200 rounded-lg px-3 py-1"
+                      />
+                    ) : (
+                      userProfile.fullName
+                    )}
+                  </h3>
+                  <p className="text-gray-600">@{userProfile.username}</p>
+                  <p className="text-sm text-gray-500">
+                    Joined {new Date(userProfile.joinDate).toLocaleDateString('en-IN', { 
+                      day: '2-digit', 
+                      month: 'short', 
+                      year: 'numeric' 
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Skill Rating */}
+              <div className={`rounded-2xl p-4 ${getSkillRatingColor(userProfile.gameStats.skillRating)}`}>
+                <div className="text-center">
+                  <p className="text-sm opacity-80">Skill Rating</p>
+                  <p className="text-2xl font-bold">{userProfile.gameStats.skillRating}</p>
+                  <p className="text-sm font-medium">{getSkillLevel(userProfile.gameStats.skillRating)}</p>
+                </div>
+              </div>
+
+              {/* Quick Stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-green-50 rounded-xl p-3 text-center">
+                  <p className="text-xl font-bold text-green-600">{userProfile.gameStats.gamesWon}</p>
+                  <p className="text-sm text-green-700">Games Won</p>
+                </div>
+                <div className="bg-blue-50 rounded-xl p-3 text-center">
+                  <p className="text-xl font-bold text-blue-600">{userProfile.gameStats.currentWinStreak}</p>
+                  <p className="text-sm text-blue-700">Win Streak</p>
+                </div>
+                <div className="bg-purple-50 rounded-xl p-3 text-center">
+                  <p className="text-xl font-bold text-purple-600">
+                    {formatDuration(userProfile.gameStats.totalPlayTime)}
+                  </p>
+                  <p className="text-sm text-purple-700">Play Time</p>
+                </div>
+                <div className="bg-yellow-50 rounded-xl p-3 text-center">
+                  <p className="text-xl font-bold text-yellow-600">₹{userProfile.financialData.lifetimeWinnings}</p>
+                  <p className="text-sm text-yellow-700">Winnings</p>
+                </div>
+              </div>
+
+              {/* Personal Information */}
+              <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                <h4 className="font-bold text-gray-800">Personal Information</h4>
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Email</span>
+                    {isEditing ? (
+                      <input
+                        type="email"
+                        value={editedProfile.email || ''}
+                        onChange={(e) => handleInputChange('email', e.target.value)}
+                        className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                      />
+                    ) : (
+                      <span className="font-medium text-gray-800">{userProfile.email}</span>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Phone</span>
+                    <span className="font-medium text-gray-800">
+                      +91 {userProfile.phoneNumber.replace(/(\d{5})(\d{5})/, '$1 $2')}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Age</span>
+                    <span className="font-medium text-gray-800">
+                      {calculateAge(userProfile.dateOfBirth)} years
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Location</span>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editedProfile.location || ''}
+                        onChange={(e) => handleInputChange('location', e.target.value)}
+                        className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                      />
+                    ) : (
+                      <span className="font-medium text-gray-800">{userProfile.location}</span>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">KYC Status</span>
+                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      userProfile.kycStatus === 'verified' ? 'bg-green-100 text-green-800' :
+                      userProfile.kycStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                      userProfile.kycStatus === 'rejected' ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {userProfile.kycStatus === 'not_started' ? 'Not Started' :
+                       userProfile.kycStatus === 'pending' ? 'Under Review' :
+                       userProfile.kycStatus === 'verified' ? 'Verified' : 'Rejected'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Referral Info */}
+              <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl p-4 text-white">
+                <h4 className="font-bold mb-2">Referral Program</h4>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-sm opacity-90">Your Code</p>
+                    <p className="font-bold">{userProfile.socialData.referralCode}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm opacity-90">Friends Referred</p>
+                    <p className="text-xl font-bold">{userProfile.socialData.friendsReferred}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              {isEditing && (
+                <button
+                  onClick={handleSaveProfile}
+                  className="w-full py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors"
+                >
+                  Save Changes
+                </button>
+              )}
+            </>
+          )}
+
+          {/* Settings Tab */}
+          {activeTab === 'settings' && (
+            <>
+              <h3 className="font-bold text-gray-800">App Settings</h3>
+              
+              <div className="space-y-4">
+                {/* Notifications */}
+                <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                  <h4 className="font-medium text-gray-800">🔔 Notifications</h4>
+                  
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Push Notifications</span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editedProfile.preferences?.notifications}
+                          onChange={(e) => handleInputChange('notifications', e.target.checked, 'preferences')}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Email Updates</span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editedProfile.preferences?.emailUpdates}
+                          onChange={(e) => handleInputChange('emailUpdates', e.target.checked, 'preferences')}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Game Settings */}
+                <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                  <h4 className="font-medium text-gray-800">🎮 Game Settings</h4>
+                  
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Sound Effects</span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editedProfile.preferences?.soundEffects}
+                          onChange={(e) => handleInputChange('soundEffects', e.target.checked, 'preferences')}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Auto Match</span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editedProfile.preferences?.autoMatch}
+                          onChange={(e) => handleInputChange('autoMatch', e.target.checked, 'preferences')}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* App Preferences */}
+                <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                  <h4 className="font-medium text-gray-800">⚙️ App Preferences</h4>
+                  
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Language</span>
+                      <select
+                        value={editedProfile.preferences?.language}
+                        onChange={(e) => handleInputChange('language', e.target.value, 'preferences')}
+                        className="bg-white border border-gray-200 rounded-lg px-3 py-1 text-sm"
+                      >
+                        <option value="en">English</option>
+                        <option value="hi">हिंदी</option>
+                        <option value="te">తెలుగు</option>
+                        <option value="ta">தமிழ்</option>
+                      </select>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Theme</span>
+                      <select
+                        value={editedProfile.preferences?.theme}
+                        onChange={(e) => handleInputChange('theme', e.target.value, 'preferences')}
+                        className="bg-white border border-gray-200 rounded-lg px-3 py-1 text-sm"
+                      >
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Save Settings */}
+                <button
+                  onClick={handleSaveProfile}
+                  className="w-full py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors"
+                >
+                  Save Settings
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Achievements Tab */}
+          {activeTab === 'achievements' && (
+            <>
+              <h3 className="font-bold text-gray-800">🏆 Your Achievements</h3>
+              
+              {userProfile.socialData.achievements.length > 0 ? (
+                <div className="space-y-3">
+                  {userProfile.socialData.achievements.map((achievement) => (
+                    <div
+                      key={achievement.id}
+                      className={`rounded-2xl p-4 border-2 ${
+                        achievement.isRare
+                          ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="text-3xl">{achievement.icon}</div>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <h4 className="font-bold text-gray-800">{achievement.title}</h4>
+                            {achievement.isRare && (
+                              <span className="px-2 py-1 bg-purple-200 text-purple-800 text-xs font-bold rounded-full">
+                                RARE
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">{achievement.description}</p>
+                          <p className="text-xs text-gray-500">
+                            Unlocked {new Date(achievement.unlockedDate).toLocaleDateString('en-IN')}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center p-8">
+                  <div className="text-4xl mb-4">🏆</div>
+                  <h3 className="text-lg font-bold text-gray-800 mb-2">No Achievements Yet</h3>
+                  <p className="text-gray-600 text-sm">
+                    Keep playing to unlock awesome achievements!
+                  </p>
+                </div>
+              )}
+
+              {/* Achievement Progress */}
+              <div className="bg-blue-50 rounded-2xl p-4">
+                <h4 className="font-bold text-blue-800 mb-2">🎯 Progress</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-blue-700">Achievements Unlocked</span>
+                    <span className="font-bold text-blue-800">
+                      {userProfile.socialData.achievements.length}/25
+                    </span>
+                  </div>
+                  <div className="w-full bg-blue-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(userProfile.socialData.achievements.length / 25) * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Privacy Tab */}
+          {activeTab === 'privacy' && (
+            <>
+              <h3 className="font-bold text-gray-800">🔒 Privacy & Security</h3>
+              
+              <div className="space-y-4">
+                {/* Account Security */}
+                <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                  <h4 className="font-medium text-gray-800">🛡️ Account Security</h4>
+                  
+                  <div className="space-y-3">
+                    <button className="w-full p-3 bg-white rounded-xl text-left hover:bg-gray-100 transition-colors">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="font-medium text-gray-800">Change Password</p>
+                          <p className="text-sm text-gray-600">Update your account password</p>
+                        </div>
+                        <span className="text-gray-400">→</span>
+                      </div>
+                    </button>
+
+                    <button className="w-full p-3 bg-white rounded-xl text-left hover:bg-gray-100 transition-colors">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="font-medium text-gray-800">Two-Factor Authentication</p>
+                          <p className="text-sm text-gray-600">Add extra security to your account</p>
+                        </div>
+                        <span className="text-gray-400">→</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Privacy Settings */}
+                <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                  <h4 className="font-medium text-gray-800">👥 Privacy Settings</h4>
+                  
+                  <div className="space-y-3">
+                    <button className="w-full p-3 bg-white rounded-xl text-left hover:bg-gray-100 transition-colors">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="font-medium text-gray-800">Blocked Users</p>
+                          <p className="text-sm text-gray-600">
+                            {userProfile.socialData.blockedUsers.length} users blocked
+                          </p>
+                        </div>
+                        <span className="text-gray-400">→</span>
+                      </div>
+                    </button>
+
+                    <button className="w-full p-3 bg-white rounded-xl text-left hover:bg-gray-100 transition-colors">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="font-medium text-gray-800">Data Export</p>
+                          <p className="text-sm text-gray-600">Download your account data</p>
+                        </div>
+                        <span className="text-gray-400">→</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Danger Zone */}
+                <div className="bg-red-50 rounded-2xl p-4 space-y-3 border border-red-200">
+                  <h4 className="font-medium text-red-800">⚠️ Danger Zone</h4>
+                  
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="w-full p-3 bg-red-100 text-red-800 rounded-xl font-medium hover:bg-red-200 transition-colors"
+                  >
+                    Delete Account
+                  </button>
+                </div>
+
+                {/* Legal */}
+                <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                  <h4 className="font-medium text-gray-800">📄 Legal</h4>
+                  
+                  <div className="space-y-2">
+                    <button className="w-full text-left text-blue-600 hover:text-blue-700 text-sm">
+                      Terms of Service
+                    </button>
+                    <button className="w-full text-left text-blue-600 hover:text-blue-700 text-sm">
+                      Privacy Policy
+                    </button>
+                    <button className="w-full text-left text-blue-600 hover:text-blue-700 text-sm">
+                      Community Guidelines
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+        </div>
+
+        {/* Delete Account Confirmation */}
+        {showDeleteConfirm && (
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+              <div className="text-center space-y-4">
+                <div className="text-4xl">⚠️</div>
+                <h3 className="text-lg font-bold text-gray-800">Delete Account?</h3>
+                <p className="text-sm text-gray-600">
+                  This action cannot be undone. All your data, game history, and account balance will be permanently deleted.
+                </p>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-2 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      onDeleteAccount()
+                      setShowDeleteConfirm(false)
+                    }}
+                    className="flex-1 py-2 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
+
+export default ProfileDataSystem

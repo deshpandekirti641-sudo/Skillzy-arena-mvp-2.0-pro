@@ -1,0 +1,422 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useLanguage } from '../hooks/useLanguageSystem';
+import { useMultiCurrency } from '../hooks/useMultiCurrency';
+import LanguageSelector from './LanguageSelector';
+import CurrencySelector from './CurrencySelector';
+import InternationalPaymentSystem from './InternationalPaymentSystem';
+
+interface Game {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  players: number;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+}
+
+interface InternationalGamingHubProps {
+  userBalance: number;
+  onStartGame: (gameId: string) => void;
+  onDeposit: () => void;
+  onWithdraw: () => void;
+}
+
+const InternationalGamingHub: React.FC<InternationalGamingHubProps> = ({
+  userBalance,
+  onStartGame,
+  onDeposit,
+  onWithdraw
+}) => {
+  const { t, currentLanguage } = useLanguage();
+  const { 
+    formatAmount, 
+    convertToCurrentCurrency, 
+    getCurrentCurrencyInfo 
+  } = useMultiCurrency();
+  
+  const [activeTab, setActiveTab] = useState<'games' | 'wallet' | 'profile'>('games');
+  const [showPayment, setShowPayment] = useState<{show: boolean; isDeposit: boolean}>({
+    show: false,
+    isDeposit: true
+  });
+
+  const currencyInfo = getCurrentCurrencyInfo();
+  
+  // Base amounts in INR converted to current currency
+  const baseBetAmount = 10; // ₹10 base bet
+  const betAmount = convertToCurrentCurrency(baseBetAmount);
+  const winnerAmount = convertToCurrentCurrency(16); // ₹16 winner amount
+  const displayBalance = convertToCurrentCurrency(userBalance);
+
+  const games: Game[] = [
+    {
+      id: 'chess',
+      name: t('chess'),
+      icon: '♔',
+      description: currentLanguage === 'en' ? 'Strategic chess battles' : 
+                  currentLanguage === 'hi' ? 'रणनीतिक शतरंज युद्ध' :
+                  currentLanguage === 'es' ? 'Batallas estratégicas de ajedrez' :
+                  currentLanguage === 'fr' ? 'Batailles d\'échecs stratégiques' :
+                  currentLanguage === 'de' ? 'Strategische Schachkämpfe' :
+                  currentLanguage === 'zh' ? '战略象棋对战' :
+                  currentLanguage === 'ar' ? 'معارك الشطرنج الاستراتيجية' :
+                  currentLanguage === 'pt' ? 'Batalhas estratégicas de xadrez' :
+                  currentLanguage === 'ru' ? 'Стратегические шахматные битвы' :
+                  currentLanguage === 'ja' ? '戦略的チェス対戦' :
+                  currentLanguage === 'ko' ? '전략적 체스 배틀' : 'Strategic chess battles',
+      players: 1247,
+      difficulty: 'Hard'
+    },
+    {
+      id: 'snakeLadder',
+      name: t('snakeLadder'),
+      icon: '🐍',
+      description: currentLanguage === 'en' ? 'Classic board game fun' : 
+                  currentLanguage === 'hi' ? 'क्लासिक बोर्ड गेम मज़ा' :
+                  currentLanguage === 'es' ? 'Diversión clásica de juego de mesa' :
+                  currentLanguage === 'fr' ? 'Amusement classique de jeu de société' :
+                  currentLanguage === 'de' ? 'Klassischer Brettspielspaß' :
+                  currentLanguage === 'zh' ? '经典桌游乐趣' :
+                  currentLanguage === 'ar' ? 'متعة لعبة اللوح الكلاسيكية' :
+                  currentLanguage === 'pt' ? 'Diversão clássica de jogo de tabuleiro' :
+                  currentLanguage === 'ru' ? 'Классическое веселье настольной игры' :
+                  currentLanguage === 'ja' ? 'クラシックボードゲームの楽しさ' :
+                  currentLanguage === 'ko' ? '클래식 보드게임 재미' : 'Classic board game fun',
+      players: 2156,
+      difficulty: 'Easy'
+    },
+    {
+      id: 'carrom',
+      name: t('carrom'),
+      icon: '🎯',
+      description: currentLanguage === 'en' ? 'Precision skill game' : 
+                  currentLanguage === 'hi' ? 'सटीक कौशल गेम' :
+                  currentLanguage === 'es' ? 'Juego de habilidad de precisión' :
+                  currentLanguage === 'fr' ? 'Jeu d\'adresse de précision' :
+                  currentLanguage === 'de' ? 'Präzisions-Geschicklichkeitsspiel' :
+                  currentLanguage === 'zh' ? '精确技巧游戏' :
+                  currentLanguage === 'ar' ? 'لعبة مهارة الدقة' :
+                  currentLanguage === 'pt' ? 'Jogo de habilidade de precisão' :
+                  currentLanguage === 'ru' ? 'Игра точности и мастерства' :
+                  currentLanguage === 'ja' ? '精密スキルゲーム' :
+                  currentLanguage === 'ko' ? '정밀 스킬 게임' : 'Precision skill game',
+      players: 3421,
+      difficulty: 'Medium'
+    }
+  ];
+
+  const handlePaymentComplete = (transaction: any): void => {
+    setShowPayment({show: false, isDeposit: true});
+    // Handle transaction completion
+    console.log('Payment completed:', transaction);
+  };
+
+  const getDifficultyColor = (difficulty: string): string => {
+    switch (difficulty) {
+      case 'Easy': return 'text-green-400';
+      case 'Medium': return 'text-yellow-400';
+      case 'Hard': return 'text-red-400';
+      default: return 'text-gray-400';
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+      {/* Header with Language and Currency Selectors */}
+      <div className="bg-black/20 backdrop-blur-sm border-b border-white/10">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
+                <span className="text-white font-bold text-lg">S</span>
+              </div>
+              <h1 className="text-2xl font-bold text-white">Skillzy Arena</h1>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <LanguageSelector compact />
+              <CurrencySelector compact />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Balance Section */}
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="bg-black/30 backdrop-blur rounded-2xl p-6 border border-white/20">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-gray-300 text-sm">{t('wallet')}</h2>
+              <div className="text-3xl font-bold text-white flex items-center gap-2">
+                <span className="text-2xl">{currencyInfo.flag}</span>
+                {formatAmount(displayBalance)}
+              </div>
+              <p className="text-gray-400 text-sm mt-1">
+                {currencyInfo.name} • {currencyInfo.country}
+              </p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPayment({show: true, isDeposit: true})}
+                className="bg-green-600 hover:bg-green-700 px-6 py-3 rounded-lg text-white font-medium transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                {t('deposit')}
+              </button>
+              
+              <button
+                onClick={() => setShowPayment({show: true, isDeposit: false})}
+                className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg text-white font-medium transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 4v10h6V11H8z" />
+                </svg>
+                {t('withdraw')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="max-w-6xl mx-auto px-4">
+        <div className="flex space-x-1 bg-black/20 rounded-xl p-1 mb-6">
+          {[
+            {id: 'games', label: currentLanguage === 'en' ? 'Games' : currentLanguage === 'hi' ? 'खेल' : currentLanguage === 'es' ? 'Juegos' : currentLanguage === 'fr' ? 'Jeux' : 'Games', icon: '🎮'},
+            {id: 'wallet', label: t('wallet'), icon: '💰'},
+            {id: 'profile', label: currentLanguage === 'en' ? 'Profile' : currentLanguage === 'hi' ? 'प्रोफाइल' : currentLanguage === 'es' ? 'Perfil' : currentLanguage === 'fr' ? 'Profil' : 'Profile', icon: '👤'}
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 px-6 rounded-lg font-medium transition-all ${
+                activeTab === tab.id
+                  ? 'bg-white text-gray-900'
+                  : 'text-white hover:bg-white/10'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Games Tab */}
+      {activeTab === 'games' && (
+        <div className="max-w-6xl mx-auto px-4 pb-8">
+          {/* Betting Info */}
+          <div className="bg-gradient-to-r from-yellow-600/20 to-orange-600/20 backdrop-blur rounded-xl p-4 mb-6 border border-yellow-500/30">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🏆</span>
+              <div>
+                <h3 className="text-white font-semibold">
+                  {currentLanguage === 'en' ? 'Win Real Money!' : 
+                   currentLanguage === 'hi' ? 'वास्तविक पैसे जीतें!' :
+                   currentLanguage === 'es' ? '¡Gana dinero real!' :
+                   currentLanguage === 'fr' ? 'Gagnez de l\'argent réel!' :
+                   'Win Real Money!'}
+                </h3>
+                <p className="text-gray-300 text-sm">
+                  {currentLanguage === 'en' ? `Bet ${formatAmount(betAmount)} • Winner gets ${formatAmount(winnerAmount)}` :
+                   currentLanguage === 'hi' ? `दांव ${formatAmount(betAmount)} • विजेता को मिलता है ${formatAmount(winnerAmount)}` :
+                   currentLanguage === 'es' ? `Apuesta ${formatAmount(betAmount)} • El ganador recibe ${formatAmount(winnerAmount)}` :
+                   currentLanguage === 'fr' ? `Pari ${formatAmount(betAmount)} • Le gagnant reçoit ${formatAmount(winnerAmount)}` :
+                   `Bet ${formatAmount(betAmount)} • Winner gets ${formatAmount(winnerAmount)}`}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Games Grid */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {games.map((game) => (
+              <div key={game.id} className="bg-black/30 backdrop-blur rounded-2xl p-6 border border-white/20 hover:border-white/40 transition-all group">
+                <div className="text-center mb-4">
+                  <div className="text-6xl mb-3">{game.icon}</div>
+                  <h3 className="text-xl font-bold text-white mb-2">{game.name}</h3>
+                  <p className="text-gray-400 text-sm">{game.description}</p>
+                </div>
+
+                <div className="flex items-center justify-between mb-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-400">Players:</span>
+                    <span className="text-white font-medium">{game.players.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-400">Level:</span>
+                    <span className={`font-medium ${getDifficultyColor(game.difficulty)}`}>
+                      {game.difficulty}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => onStartGame(game.id)}
+                  className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 py-3 rounded-lg text-white font-medium transition-all group-hover:shadow-lg group-hover:shadow-purple-500/25"
+                >
+                  {t('playNow')} • {formatAmount(betAmount)}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Wallet Tab */}
+      {activeTab === 'wallet' && (
+        <div className="max-w-4xl mx-auto px-4 pb-8">
+          <div className="bg-black/30 backdrop-blur rounded-2xl p-8 border border-white/20">
+            <h3 className="text-2xl font-bold text-white mb-6">
+              {currentLanguage === 'en' ? 'Wallet Management' :
+               currentLanguage === 'hi' ? 'वॉलेट प्रबंधन' :
+               currentLanguage === 'es' ? 'Gestión de Cartera' :
+               currentLanguage === 'fr' ? 'Gestion du Portefeuille' :
+               'Wallet Management'}
+            </h3>
+
+            <div className="grid md:grid-cols-2 gap-8">
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-white">
+                  {currentLanguage === 'en' ? 'Available Payment Methods' :
+                   currentLanguage === 'hi' ? 'उपलब्ध भुगतान विधियां' :
+                   currentLanguage === 'es' ? 'Métodos de Pago Disponibles' :
+                   currentLanguage === 'fr' ? 'Méthodes de Paiement Disponibles' :
+                   'Available Payment Methods'}
+                </h4>
+                
+                <div className="space-y-2">
+                  {/* Display available payment methods for current currency */}
+                  {getCurrentCurrencyInfo().paymentMethods.map((method, index) => (
+                    <div key={index} className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg">
+                      <span className="text-green-400">✓</span>
+                      <span className="text-white">{method}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-white">
+                  {currentLanguage === 'en' ? 'Transaction History' :
+                   currentLanguage === 'hi' ? 'लेनदेन इतिहास' :
+                   currentLanguage === 'es' ? 'Historial de Transacciones' :
+                   currentLanguage === 'fr' ? 'Historique des Transactions' :
+                   'Transaction History'}
+                </h4>
+                
+                <div className="text-center py-8 text-gray-400">
+                  {currentLanguage === 'en' ? 'No transactions yet' :
+                   currentLanguage === 'hi' ? 'अभी तक कोई लेनदेन नहीं' :
+                   currentLanguage === 'es' ? 'Aún no hay transacciones' :
+                   currentLanguage === 'fr' ? 'Aucune transaction pour le moment' :
+                   'No transactions yet'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Tab */}
+      {activeTab === 'profile' && (
+        <div className="max-w-4xl mx-auto px-4 pb-8">
+          <div className="bg-black/30 backdrop-blur rounded-2xl p-8 border border-white/20">
+            <h3 className="text-2xl font-bold text-white mb-6">
+              {currentLanguage === 'en' ? 'Profile Settings' :
+               currentLanguage === 'hi' ? 'प्रोफाइल सेटिंग्स' :
+               currentLanguage === 'es' ? 'Configuración del Perfil' :
+               currentLanguage === 'fr' ? 'Paramètres du Profil' :
+               'Profile Settings'}
+            </h3>
+
+            <div className="grid md:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-lg font-semibold text-white mb-4">
+                    {currentLanguage === 'en' ? 'Language Preferences' :
+                     currentLanguage === 'hi' ? 'भाषा प्राथमिकताएं' :
+                     currentLanguage === 'es' ? 'Preferencias de Idioma' :
+                     currentLanguage === 'fr' ? 'Préférences Linguistiques' :
+                     'Language Preferences'}
+                  </h4>
+                  <LanguageSelector showFlags={true} />
+                </div>
+
+                <div>
+                  <h4 className="text-lg font-semibold text-white mb-4">
+                    {currentLanguage === 'en' ? 'Currency Settings' :
+                     currentLanguage === 'hi' ? 'मुद्रा सेटिंग्स' :
+                     currentLanguage === 'es' ? 'Configuración de Moneda' :
+                     currentLanguage === 'fr' ? 'Paramètres de Devise' :
+                     'Currency Settings'}
+                  </h4>
+                  <CurrencySelector showFlags={true} />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-white">
+                  {currentLanguage === 'en' ? 'Account Statistics' :
+                   currentLanguage === 'hi' ? 'खाता आंकड़े' :
+                   currentLanguage === 'es' ? 'Estadísticas de Cuenta' :
+                   currentLanguage === 'fr' ? 'Statistiques de Compte' :
+                   'Account Statistics'}
+                </h4>
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
+                    <span className="text-gray-400">
+                      {currentLanguage === 'en' ? 'Games Played' :
+                       currentLanguage === 'hi' ? 'खेले गए खेल' :
+                       currentLanguage === 'es' ? 'Juegos Jugados' :
+                       currentLanguage === 'fr' ? 'Jeux Joués' :
+                       'Games Played'}
+                    </span>
+                    <span className="text-white font-medium">0</span>
+                  </div>
+                  <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
+                    <span className="text-gray-400">
+                      {currentLanguage === 'en' ? 'Total Winnings' :
+                       currentLanguage === 'hi' ? 'कुल जीत' :
+                       currentLanguage === 'es' ? 'Ganancias Totales' :
+                       currentLanguage === 'fr' ? 'Gains Totaux' :
+                       'Total Winnings'}
+                    </span>
+                    <span className="text-white font-medium">{formatAmount(0)}</span>
+                  </div>
+                  <div className="flex justify-between p-3 bg-gray-800/50 rounded-lg">
+                    <span className="text-gray-400">
+                      {currentLanguage === 'en' ? 'Win Rate' :
+                       currentLanguage === 'hi' ? 'जीत दर' :
+                       currentLanguage === 'es' ? 'Tasa de Victorias' :
+                       currentLanguage === 'fr' ? 'Taux de Victoire' :
+                       'Win Rate'}
+                    </span>
+                    <span className="text-white font-medium">0%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment System Modal */}
+      {showPayment.show && (
+        <InternationalPaymentSystem
+          isDeposit={showPayment.isDeposit}
+          onComplete={handlePaymentComplete}
+          onCancel={() => setShowPayment({show: false, isDeposit: true})}
+        />
+      )}
+    </div>
+  );
+};
+
+export default InternationalGamingHub;
