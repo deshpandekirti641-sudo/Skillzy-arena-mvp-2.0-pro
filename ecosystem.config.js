@@ -34,16 +34,14 @@ module.exports = {
       // Memory management
       max_memory_restart: '1G',
       // Monitoring
-      monitoring: false,
+      watch: false,
+      ignore_watch: ['node_modules', 'logs', 'data'],
       // Logs
       log_file: './logs/skillzy-arena-app.log',
       out_file: './logs/skillzy-arena-app-out.log',
       error_file: './logs/skillzy-arena-app-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs: true,
-      // Auto restart on file changes (development only)
-      watch: false,
-      ignore_watch: ['node_modules', 'logs', 'data']
+      merge_logs: true
     },
 
     {
@@ -54,6 +52,7 @@ module.exports = {
       exec_mode: 'fork',
       cron_restart: '0 */6 * * *', // Every 6 hours
       autorestart: false,
+      watch: false,
       env: {
         NODE_ENV: 'production',
         LOG_LEVEL: 'info'
@@ -72,6 +71,7 @@ module.exports = {
       exec_mode: 'fork',
       cron_restart: '0 2 * * *', // Every day at 2 AM
       autorestart: false,
+      watch: false,
       env: {
         NODE_ENV: 'production',
         LOG_LEVEL: 'info'
@@ -90,6 +90,7 @@ module.exports = {
       exec_mode: 'fork',
       cron_restart: '0 */4 * * *', // Every 4 hours
       autorestart: false,
+      watch: false,
       env: {
         NODE_ENV: 'production',
         LOG_LEVEL: 'info'
@@ -115,6 +116,7 @@ module.exports = {
       max_restarts: 5,
       kill_timeout: 5000,
       max_memory_restart: '512M',
+      watch: false,
       log_file: './logs/flutter-server.log',
       out_file: './logs/flutter-server-out.log',
       error_file: './logs/flutter-server-error.log',
@@ -128,6 +130,7 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       restart_delay: 10000,
+      watch: false,
       env: {
         NODE_ENV: 'production',
         LOG_LEVEL: 'info',
@@ -141,7 +144,6 @@ module.exports = {
   ],
 
   deploy: {
-    // Production deployment
     production: {
       user: 'deploy',
       host: 'your-production-server.com',
@@ -154,7 +156,6 @@ module.exports = {
       ssh_options: 'StrictHostKeyChecking=no'
     },
 
-    // Staging deployment
     staging: {
       user: 'deploy',
       host: 'your-staging-server.com',
@@ -166,3 +167,4 @@ module.exports = {
     }
   }
 };
+
